@@ -16,6 +16,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.TextView;
+
 /**
  * Created by matt on 08/08/2016.
  */
@@ -38,8 +40,25 @@ public class MainService extends Service implements View.OnTouchListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForeground(1, new Notification());
         }
-        windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-        addOverlayView();
+    }
+
+    private String displayTxt = "DEFAULT TEXT";
+
+    @Override
+    public int onStartCommand (Intent intent, int flags, int startId) {
+        Log.v(TAG, "[OSC]");
+        try {
+            String msg = (String) intent.getExtras().get("show-message");
+            Log.i(TAG, "show-message:" + msg);
+            if (msg != null && !msg.isEmpty()) {
+                displayTxt = msg;
+            }
+            windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+            addOverlayView();
+        } catch (Exception e) {
+            Log.e(TAG, "[OSC] got Exception ", e);
+        }
+        return START_NOT_STICKY;
     }
 
     private void addOverlayView() {
@@ -78,6 +97,13 @@ public class MainService extends Service implements View.OnTouchListener {
         };
         floatyView = ((LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.floating_view, interceptorLayout);
         floatyView.setOnTouchListener(this);
+        try {
+            TextView text = floatyView.findViewById(R.id.textView);
+            text.setText(displayTxt);
+        } catch (Exception e) {
+            Log.i(TAG, "[AOV]Cannot set text message");
+            e.printStackTrace();
+        }
         Log.v(TAG, "[AOV] wm.addView");
         windowManager.addView(floatyView, params);
     }

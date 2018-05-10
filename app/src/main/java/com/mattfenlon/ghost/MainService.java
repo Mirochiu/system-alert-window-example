@@ -1,10 +1,12 @@
 package com.mattfenlon.ghost;
 
 
+import android.app.Notification;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 import android.view.Gravity;
@@ -33,16 +35,25 @@ public class MainService extends Service implements View.OnTouchListener {
     public void onCreate() {
         super.onCreate();
         Log.v(TAG, "[OC]");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForeground(1, new Notification());
+        }
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         addOverlayView();
     }
 
     private void addOverlayView() {
+        int windowType;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            windowType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        } else {
+            windowType = WindowManager.LayoutParams.TYPE_PHONE;
+        }
         final WindowManager.LayoutParams params =
             new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.TYPE_PHONE,
+                    windowType,
                     0,
                     PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.CENTER | Gravity.START;

@@ -48,10 +48,12 @@ public class MainService extends Service implements View.OnTouchListener {
     public int onStartCommand (Intent intent, int flags, int startId) {
         Log.v(TAG, "[OSC]");
         try {
-            String msg = (String) intent.getExtras().get("show-message");
-            Log.i(TAG, "show-message:" + msg);
-            if (msg != null && !msg.isEmpty()) {
-                displayTxt = msg;
+            if (intent.hasExtra("show-message")) {
+                String msg = intent.getStringExtra("show-message");
+                Log.i(TAG, "show-message:" + msg);
+                if (msg != null && !msg.isEmpty()) {
+                    displayTxt = msg;
+                }
             }
             windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
             addOverlayView();
@@ -101,8 +103,7 @@ public class MainService extends Service implements View.OnTouchListener {
             TextView text = floatyView.findViewById(R.id.textView);
             text.setText(displayTxt);
         } catch (Exception e) {
-            Log.i(TAG, "[AOV]Cannot set text message");
-            e.printStackTrace();
+            Log.i(TAG, "[AOV]Cannot set text message", e);
         }
         Log.v(TAG, "[AOV] wm.addView");
         windowManager.addView(floatyView, params);

@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
   private void launchMainService() {
     Log.i(TAG, "[LMS]startService");
     Intent svc = new Intent(this, MainService.class);
+    svc.putExtra("show-message", "launchMainService " + svc.hashCode());
     startService(svc);
     Log.i(TAG, "[LMS]finish");
     finish();

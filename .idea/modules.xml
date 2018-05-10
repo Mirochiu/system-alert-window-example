@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://C:\Users\Mirochiu\Desktop\test.repo\system-alert-window-example\Ghost.iml" filepath="C:\Users\Mirochiu\Desktop\test.repo\system-alert-window-example\Ghost.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
       <module fileurl="file://$PROJECT_DIR$/system-alert-window-example.iml" filepath="$PROJECT_DIR$/system-alert-window-example.iml" />
     </modules>

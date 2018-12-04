@@ -30,6 +30,10 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void launchMainService() {
+    // test adb commands
+    //am startservice -e "show-message" "my message" com.mattfenlon.ghost/.MainService
+    //am startservice -e "show-message-and-rington" "rington message" com.mattfenlon.ghost/.MainService
+    //am startservice -e "clear-message" "" com.mattfenlon.ghost/.MainService
     Log.i(TAG, "[LMS]startService");
     Intent svc = new Intent(this, MainService.class);
     svc.putExtra("show-message", "launchMainService " + svc.hashCode());

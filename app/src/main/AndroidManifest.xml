@@ -20,7 +20,8 @@
 
         <service
             android:name=".MainService"
-            android:exported="false" />
+            android:exported="true"
+            android:enabled="true" />
 
     </application>
 

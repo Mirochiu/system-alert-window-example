@@ -6,17 +6,34 @@
              android:layout_height="200dp">
 
     <ImageView
-        android:src="@drawable/ic_android_black_24dp"
+        android:id="@+id/BgImageOnFloaty"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
+        android:layout_height="match_parent"
+        android:paddingTop="40dp"
+        android:src="@drawable/ic_android_black_24dp" />
 
     <TextView
-        android:id="@+id/textView"
+        android:id="@+id/TextOnFloaty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="TextView"
         android:textAlignment="center"
         android:textAllCaps="false"
         android:textSize="36sp" />
+
+    <SurfaceView
+        android:id="@+id/SurfaceViewOnFloaty"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_gravity="bottom|right"
+        android:background="@color/colorPrimaryDark" />
+
+    <Button
+        android:id="@+id/ButtonOnFloaty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|left"
+        android:gravity="center"
+        android:text="Button" />
 
 </FrameLayout>

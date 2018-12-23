@@ -6,15 +6,11 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.AssetManager;
+import android.drm.DrmStore;
 import android.graphics.PixelFormat;
-import android.media.AudioAttributes;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.os.Build;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.support.v4.app.NotificationCompat;
 import android.text.TextUtils;
 import android.util.Log;
@@ -22,30 +18,89 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
-import java.io.FileDescriptor;
+import android.widget.Toast;
 
 public class MainService extends Service implements View.OnTouchListener {
     private static String TAG = MainService.class.getSimpleName();
+
+    public static final String EXTRA_SHOW_MESSAGE = "show-message";
+    public static final String EXTRA_SHOW_MESSAGE_AND_RINGTON = "show-message-and-rington";
+    public static final String EXTRA_SHOW_MESSAGE_AND_MOVIE = "show-message-and-movie";
+    public static final String EXTRA_PLAY_MOVIE_URL = "play-movie-url";
+    public static final String EXTRA_PLAY_MUSIC_URL = "play-music-url";
+    public static final String EXTRA_VALUE_NULL_URL = "<null>";
+    public static final String EXTRA_CLEAR_MESSAGE = "clear-message";
+    public static final String EXTRA_STOP_SERVICE = "stop-service";
+
     private WindowManager windowManager;
     private LayoutInflater layoutInflater;
     private View floatyView;
     private String displayTxt = "DEFAULT TEXT";
-    private HandlerThread handlerThread;
-    private Handler handler;
-    private Object mpLock = new Object();
-    private MediaPlayer mp;
     private int windowType;
-    private AudioAttributes audAttr;
     private WindowManager.LayoutParams wmLayoutParam;
+    private MainPlayer player;
+    private SurfaceHolder holderForVideoPlayback = null;
+    private SurfaceHolder surfaceHolder;
 
-    public static final String EXTRA_SHOW_MESSAGE = "show-message";
-    public static final String EXTRA_SHOW_MESSAGE_AND_RINGTON = "show-message-and-rington";
-    public static final String EXTRA_CLEAR_MESSAGE = "clear-message";
-    public static final String EXTRA_STOP_SERVICE = "stop-service";
+    private SurfaceHolder.Callback holderCallback = new SurfaceHolder.Callback() {
+        @Override
+        public void surfaceCreated(SurfaceHolder holder) {
+            Log.d(TAG, "surfaceCreated");
+            holderForVideoPlayback = holder;
+        }
+        @Override
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            Log.d(TAG, "surfaceChanged");
+        }
+        @Override
+        public void surfaceDestroyed(SurfaceHolder holder) {
+            Log.d(TAG, "surfaceDestroyed");
+            holderForVideoPlayback = null;
+        }
+    };
+
+    private MainPlayer.Callback playerCallback = new MainPlayer.Callback() {
+        @Override
+        public SurfaceHolder onDisplayRequired() {
+            long timeout = SystemClock.uptimeMillis() + 5000; // timeout 5 sec
+            while (null == holderForVideoPlayback) {
+                Log.d(TAG, "[ODR] retry=" + holderForVideoPlayback);
+                if (SystemClock.uptimeMillis()  > timeout) {
+                    Log.e(TAG, "[ODR] Timeout");
+                    break;
+                }
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    Log.d(TAG, "[ODR] InterruptedException ", e);
+                }
+            }
+            Log.d(TAG, "[ODR] " + holderForVideoPlayback);
+            return holderForVideoPlayback;
+        }
+        @Override
+        public void onError(MainPlayer player, int i, int i1) {
+            Log.v(TAG, "play got error " + i + " " + i1);
+            player.stopPlayback();
+            Toast.makeText(getApplicationContext(), "playback error " + i + ","+ i1, Toast.LENGTH_LONG).show();
+        }
+        @Override
+        public void onStart(MainPlayer player) {
+            Toast.makeText(getApplicationContext(), "playback started!", Toast.LENGTH_LONG).show();
+        }
+        @Override
+        public void onCompletion(MainPlayer player) {
+            Toast.makeText(getApplicationContext(), "playback completion!", Toast.LENGTH_LONG).show();
+        }
+    };
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -77,13 +132,6 @@ public class MainService extends Service implements View.OnTouchListener {
     public void onCreate() {
         super.onCreate();
         Log.v(TAG, "[OC]");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            Log.v(TAG, "[OC] Your system is above LOLLIPOP");
-            audAttr = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build();
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             windowType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
             Log.v(TAG, "[OC] Your system is above OREO");
@@ -103,36 +151,28 @@ public class MainService extends Service implements View.OnTouchListener {
         wmLayoutParam.gravity = Gravity.CENTER | Gravity.START;
         wmLayoutParam.x = 0;
         wmLayoutParam.y = 0;
+        // if you want to let the other app get the touch event, you should add FLAG_NOT_TOUCH_MODAL
+        wmLayoutParam.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+        // if you want to let this app get the back key event to leave your app, you should NOT add FLAG_NOT_FOCUSABLE
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         layoutInflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-        try {
-            handlerThread = new HandlerThread("service-thread");
-            handlerThread.start();
-            handler = new Handler(handlerThread.getLooper());
-        } catch (Exception e) {
-            Log.e(TAG, "[OC] service thread error:" +e.getMessage());
-        }
+        player = new MainPlayer(getApplication().getApplicationContext(), playerCallback);
     }
 
     @Override
     public void onDestroy() {
         Log.i(TAG, "[OD]");
         try {
-            if (null != handler) {
-                handler.removeCallbacksAndMessages(null);
-            }
-            if (null != handlerThread) {
-                handlerThread.quitSafely();
+            if (null != player) {
+                player.release();
             }
         } finally {
-            audAttr = null;
-            wmLayoutParam = null;
-            windowManager = null;
-            layoutInflater = null;
-            handlerThread = null;
-            handler = null;
-            super.onDestroy();
+            player = null;
         }
+        wmLayoutParam = null;
+        windowManager = null;
+        layoutInflater = null;
+        super.onDestroy();
     }
 
     @Override
@@ -143,17 +183,56 @@ public class MainService extends Service implements View.OnTouchListener {
                 onShowMessage(intent);
             } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_RINGTON)) {
                 onShowMessage(intent);
+            } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_MOVIE)) {
+                onShowMessage(intent);
+            } else if (intent.hasExtra(EXTRA_PLAY_MOVIE_URL)) {
+                onPlayUrl(intent);
+            } else if (intent.hasExtra(EXTRA_PLAY_MUSIC_URL)) {
+                onPlayUrl(intent);
             } else if (intent.hasExtra(EXTRA_CLEAR_MESSAGE)) {
-                Log.v(TAG, EXTRA_CLEAR_MESSAGE);
                 onRemoveMessage();
             } else if (intent.hasExtra(EXTRA_STOP_SERVICE)) {
-                Log.v(TAG, EXTRA_STOP_SERVICE);
                 onStopService();
             }
         } catch (Exception e) {
             Log.e(TAG, "[OSC] got exception ", e);
         }
         return START_NOT_STICKY;
+    }
+
+    private boolean onPlayUrl(Intent intent) {
+        Log.v(TAG, "[OPU]" + intent);
+        String msg = null;
+        if (intent.hasExtra(EXTRA_PLAY_MOVIE_URL)) {
+            msg = intent.getStringExtra(EXTRA_PLAY_MOVIE_URL);
+            if (!TextUtils.isEmpty(msg) && !EXTRA_VALUE_NULL_URL.equals(msg)) {
+                Log.d(TAG, "Play video url=" + msg);
+                displayTxt = msg;
+                player.playURL(msg, MainPlayer.TYPE_VIDEO);
+            } else {
+                // mp4 from AOSP
+                // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
+                displayTxt = "H264_BP_1920x1080_30fps_1200Kbps_1_10.mp4";
+                player.playAsset("H264_BP_1920x1080_30fps_1200Kbps_1_10.mp4", MainPlayer.TYPE_VIDEO);
+            }
+            addOverlayView();
+            return true;
+        } else if (intent.hasExtra(EXTRA_PLAY_MUSIC_URL)) {
+            msg = intent.getStringExtra(EXTRA_PLAY_MUSIC_URL);
+            if (!TextUtils.isEmpty(msg) && !EXTRA_VALUE_NULL_URL.equals(msg)) {
+                Log.d(TAG, "Play music url=" + msg);
+                displayTxt = msg;
+                player.playURL(msg, MainPlayer.TYPE_MUSIC);
+            } else {
+                // mp3 from AOSP
+                // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
+                displayTxt = "MP3_48KHz_128kbps_s_1_17.mp3";
+                player.playAsset("MP3_48KHz_128kbps_s_1_17.mp3", MainPlayer.TYPE_MUSIC);
+            }
+            addOverlayView();
+            return true;
+        }
+        return false;
     }
 
     private void onShowMessage(Intent intent) {
@@ -171,7 +250,17 @@ public class MainService extends Service implements View.OnTouchListener {
                 displayTxt = msg;
                 // mp3 from AOSP
                 // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
-                playMusic("MP3_48KHz_128kbps_s_1_17.mp3");
+                player.playAsset("MP3_48KHz_128kbps_s_1_17.mp3", MainPlayer.TYPE_MUSIC);
+            }
+        }
+        if (null == msg) {
+            msg = intent.getStringExtra(EXTRA_SHOW_MESSAGE_AND_MOVIE);
+            if (!TextUtils.isEmpty(msg)) {
+                Log.v(TAG, EXTRA_SHOW_MESSAGE_AND_MOVIE + "=>" + msg);
+                displayTxt = msg;
+                // mp4 from AOSP
+                // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
+                player.playAsset("H264_BP_1920x1080_30fps_1200Kbps_1_10.mp4", MainPlayer.TYPE_VIDEO);
             }
         }
         addOverlayView();
@@ -180,87 +269,40 @@ public class MainService extends Service implements View.OnTouchListener {
     private void onRemoveMessage() {
         Log.v(TAG, "[ORM]");
         removeOverlayView();
-        stopMusic();
+        if (null != player) player.stopPlayback();
     }
 
     @Override
     public boolean onTouch(View view, MotionEvent motionEvent) {
-        Log.v(TAG, "[OT]");
-        onRemoveMessage();
-        return true;
-    }
-
-    private void stopMusic() {
-        Log.v(TAG, "[MUSIC] in stop");
-        synchronized (mpLock) {
-            if (null != mp) {
-                if (mp.isPlaying()) {
-                    Log.v(TAG, "[MUSIC] stop mp");
-                    mp.stop();
-                }
-                Log.v(TAG, "[MUSIC] release mp");
-                mp.release();
-                mp = null;
+        if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
+            StringBuilder sb;
+            final float x = motionEvent.getX();
+            final float y = motionEvent.getY();
+            sb = new StringBuilder();
+            Log.v(TAG, sb.append("touch x=").append(x).append(" y=").append(y).toString());
+            if (null != floatyView) {
+                // https://stackoverflow.com/questions/9125935/get-position-of-imageview-on-layout-android
+                ImageView imgView = floatyView.findViewById(R.id.BgImageOnFloaty);
+                final int imgL = imgView.getLeft();
+                final int imgR = imgView.getRight();
+                final int imgT = imgView.getTop();
+                final int imgB = imgView.getBottom();
+                boolean isTouched = ( x>imgL &&  x<imgR && y>imgT && y<imgB );
+                sb = new StringBuilder();
+                Log.v(TAG, sb.append("Touched?").append(isTouched)
+                        .append(" img ").append(imgL).append(',').append(imgR).append(',').append(imgT).append(',').append(imgB)
+                        .append(" w,h=").append(imgR-imgL).append(',').append(imgB-imgT)
+                                .toString());
+                if (isTouched) onRemoveMessage();
+                return isTouched;
             }
         }
-    }
-
-    private void playMusic(final String assetPath) {
-        stopMusic();
-        handler.post(new Runnable() {
-            public void run() {
-                Log.v(TAG, "[MUSIC] in start");
-                try {
-                    AssetManager asset = getApplication().getApplicationContext().getAssets();
-                    Log.v(TAG, "[MUSIC] AssetManager=" + asset);
-                    FileDescriptor fd = asset.openFd(assetPath).getFileDescriptor();
-                    Log.v(TAG, "[MUSIC] InputStream=" + fd);
-                    synchronized (mpLock) {
-                        Log.v(TAG, "[MUSIC] new mp");
-                        mp = new MediaPlayer();
-                        Log.v(TAG, "[MUSIC] test set audio type");
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            mp.setAudioAttributes(audAttr);
-                        } else {
-                            mp.setAudioStreamType(AudioManager.STREAM_RING);
-                        }
-                        mp.setDataSource(fd);
-                        mp.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                            @Override
-                            public void onPrepared(MediaPlayer mediaPlayer) {
-                                Log.v(TAG, "[MUSIC] start play music");
-                                mp.start();
-                            }
-                        });
-                        mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-                            @Override
-                            public boolean onError(MediaPlayer mediaPlayer, int i, int i1) {
-                                Log.v(TAG, "[MUSIC] play music got error " + i + " " + i1);
-                                stopMusic();
-                                return false;
-                            }
-                        });
-                        mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                            @Override
-                            public void onCompletion(MediaPlayer mediaPlayer) {
-                                Log.v(TAG, "[MUSIC] play music ended");
-                                stopMusic();
-                            }
-                        });
-                        Log.v(TAG, "[MUSIC] prepareAsync");
-                        mp.prepareAsync();
-                    }
-                    Log.v(TAG, "[MUSIC] start end");
-                } catch (Exception e) {
-                    Log.e(TAG, "[MUSIC] got exception", e);
-                }
-            }
-        });
+        return false;
     }
 
     private void changeTextOnOverlayView(String text) {
         try {
-            TextView view = floatyView.findViewById(R.id.textView);
+            TextView view = floatyView.findViewById(R.id.TextOnFloaty);
             view.setText(text);
         } catch (Exception e) {
             Log.i(TAG, "Cannot change text on OverlayView", e);
@@ -269,25 +311,54 @@ public class MainService extends Service implements View.OnTouchListener {
 
     private View createOverlayView() {
         View view;
-        FrameLayout interceptorLayout = new FrameLayout(this) {
+        view = layoutInflater.inflate(R.layout.floating_view, new FrameLayout(this) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent ev) {
+                Log.v(TAG, "dispatchTouchEvent " + ev);
+                boolean ret = super.dispatchTouchEvent(ev);
+                Log.d(TAG, "dispatchTouchEvent ret=" + ret + " " + ev);
+                return ret;
+            }
             @Override
             public boolean dispatchKeyEvent(KeyEvent event) {
                 // Only fire on the ACTION_DOWN event, or you'll get two events (one for _DOWN, one for _UP)
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     // Check if the HOME button is pressed
                     if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-                        Log.v(TAG, "BACK Button Pressed");
+                        Log.v(TAG, "BACK Button Pressed, ret:true");
                         // As we've taken action, we'll return true to prevent other apps from consuming the event as well
                         onRemoveMessage();
                         return true;
                     }
+                    /* test code beg */
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_2) {
+                        Log.v(TAG, "Number 2 Pressed, ret:false");
+                        return false;
+                    }
+                    /* test code end */
                 }
                 // Otherwise don't intercept the event
-                return super.dispatchKeyEvent(event);
+                boolean ret = super.dispatchKeyEvent(event);
+                /* test code beg */
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    Log.v(TAG, "key:" + event + " ret:" + ret);
+                }
+                /* test code end */
+                return ret;
             }
-        };
-        view = layoutInflater.inflate(R.layout.floating_view, interceptorLayout);
+        });
+        SurfaceView surfaceView = view.findViewById(R.id.SurfaceViewOnFloaty);
+        surfaceHolder = surfaceView.getHolder();
+        surfaceHolder.addCallback(holderCallback);
         view.setOnTouchListener(this);
+        Button btn = view.findViewById(R.id.ButtonOnFloaty);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Log.i(TAG, "clicked");
+                onRemoveMessage();
+            }
+        });
         return view;
     }
 
@@ -304,7 +375,7 @@ public class MainService extends Service implements View.OnTouchListener {
     private void removeOverlayView() {
         synchronized (this) {
             if (null != windowManager) {
-                Log.v(TAG, "[CS] wm.removeView");
+                Log.v(TAG, "[ROV] wm.removeView");
                 windowManager.removeView(floatyView);
             }
             floatyView = null;

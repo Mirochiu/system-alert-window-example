@@ -1,6 +1,8 @@
 package com.mattfenlon.ghost;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -13,6 +15,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.support.v4.app.NotificationCompat;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
@@ -50,6 +53,26 @@ public class MainService extends Service implements View.OnTouchListener {
         return null;
     }
 
+    // https://stackoverflow.com/questions/47531742/startforeground-fail-after-upgrade-to-android-8-1
+    private void startMyOwnForeground() {
+        String NOTIFICATION_CHANNEL_ID = getApplicationContext().getPackageName();
+        String channelName = getClass().getSimpleName();
+        NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
+        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        assert manager != null;
+        manager.createNotificationChannel(chan);
+
+        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
+        Notification notification = notificationBuilder.setOngoing(true)
+                .setSmallIcon(R.drawable.ic_android_black_24dp) // notification icon
+                .setContentTitle("App is running in background") // notification text
+                .setPriority(NotificationManager.IMPORTANCE_MIN)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .build();
+        startForeground(1, notification);
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -64,7 +87,10 @@ public class MainService extends Service implements View.OnTouchListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             windowType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
             Log.v(TAG, "[OC] Your system is above OREO");
-            startForeground(1, new Notification());
+            //startForeground(1, new Notification());
+            // above workaround crashed in android 9 (Pie)
+            // android.app.RemoteServiceException: Bad notification for startForeground: java.lang.RuntimeException: invalid channel for service notification: Notification(channel=null pri=0 contentView=null vibrate=null sound=null defaults=0x0 flags=0x40 color=0x00000000 vis=PRIVATE)
+            startMyOwnForeground();
         } else {
             windowType = WindowManager.LayoutParams.TYPE_PHONE;
         }

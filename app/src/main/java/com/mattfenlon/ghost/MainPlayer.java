@@ -4,11 +4,14 @@ import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.media.MediaPlayer;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.view.SurfaceHolder;
-import android.widget.Toast;
 
 import java.io.FileDescriptor;
 
@@ -43,6 +46,7 @@ public class MainPlayer {
     private MediaPlayer mp;
     private HandlerThread handlerThread;
     private Handler handler;
+    private Ringtone ring;
 
     public interface Callback {
         SurfaceHolder onDisplayRequired();
@@ -97,6 +101,58 @@ public class MainPlayer {
             } finally {
                 mp = null;
             }
+            try {
+                if (null != ring) {
+                    if (ring.isPlaying()) {
+                        if (DEBUG) Log.v(TAG, "stop ring");
+                        ring.stop();
+                    }
+                    if (DEBUG) Log.v(TAG, "release ring");
+                }
+            } finally {
+                ring = null;
+            }
+        }
+    }
+    /**
+     * @param type
+     *  RingtoneManager.TYPE_ALARM
+     *  RingtoneManager.TYPE_ALL
+     *  RingtoneManager.TYPE_NOTIFICATION
+     *  RingtoneManager.TYPE_RINGTONE
+     */
+    public void playRingtone(int type) {
+        /*
+        // 1. if the ringtone located at system or external storage, we cannot play it by permission
+        // 2. always got null Uri when run on android emulator
+        Uri resource = RingtoneManager.getActualDefaultRingtoneUri(context, type);
+        if (DEBUG) Log.v(TAG, "ringtone uri:" + resource);
+        if (null == resource) {
+           callback.onError(this, -3,  -1);
+        } else {
+            startPlayback(resource, TYPE_MUSIC);
+        }
+        */
+        //https://stackoverflow.com/questions/4441334/how-to-play-an-android-notification-sound
+        Uri resource = RingtoneManager.getDefaultUri(type);
+        if (DEBUG) Log.v(TAG, "ringtone uri:" + resource);
+        if (null == resource) {
+            callback.onError(this, -3,  -1);
+        } else {
+            stopPlayback();
+            try {
+                ring = RingtoneManager.getRingtone(context, resource);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    Log.v(TAG, "ring set looping");
+                    ring.setLooping(true);
+                }
+                ring.play();
+                Log.v(TAG, "ring.play()");
+                callback.onStart(this);
+            } catch (Exception e) {
+                Log.e(TAG, "ring error:", e);
+                callback.onError(this, -4, -1);
+            }
         }
     }
 
@@ -114,8 +170,8 @@ public class MainPlayer {
             //startPlayback(fd, type);
             startPlayback(asset.openFd(assetPath), type);
         } catch (Exception e) {
-            Log.e(TAG, "got exception", e);
-            e.printStackTrace();
+            if (DEBUG) Log.v(TAG, "got exception:", e);
+            callback.onError(MainPlayer.this, -2, -1);
         }
     }
 
@@ -138,6 +194,10 @@ public class MainPlayer {
                         } else if (mediaSource instanceof String) {
                             if (DEBUG) Log.v(TAG, "play url");
                             mp.setDataSource((String) mediaSource);
+                        } else if (mediaSource instanceof Uri) {
+                            if (DEBUG) Log.v(TAG, "play Uri for ringtone");
+                            mp.setDataSource(context, (Uri)mediaSource);
+                            mp.setLooping(true); // for ringtone
                         }
                         mp.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                             @Override
@@ -174,7 +234,7 @@ public class MainPlayer {
                     }
                     if (DEBUG) Log.v(TAG, "out startPlayback");
                 } catch (Exception e) {
-                    if (DEBUG) Log.v(TAG, "got exception");
+                    if (DEBUG) Log.v(TAG, "got exception ", e);
                     callback.onError(MainPlayer.this, -1, 123456);
                 }
             }

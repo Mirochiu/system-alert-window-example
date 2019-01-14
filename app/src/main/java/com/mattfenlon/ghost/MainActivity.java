@@ -16,8 +16,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (Settings.canDrawOverlays(this)) {
-            Log.i(TAG, "[OC]draw overlays");
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                Log.i(TAG, "[OC]no need overlays");
+            } else {
+                Log.i(TAG, "[OC]draw overlays");
+            }
             // Launch service right away - the user has already previously granted permission
             launchMainService();
         }
@@ -31,7 +35,8 @@ public class MainActivity extends AppCompatActivity {
     private void launchMainService() {
         // test adb commands
         //am startservice -e "show-message" "my message" com.mattfenlon.ghost/.MainService
-        //am startservice -e "show-message-and-rington" "rington message" com.mattfenlon.ghost/.MainService
+        //am startservice -e "show-message-and-ringtone" "ringtone message" com.mattfenlon.ghost/.MainService
+        //am startservice -e "show-message-and-music" "music message" com.mattfenlon.ghost/.MainService
         //am startservice -e "clear-message" "" com.mattfenlon.ghost/.MainService
         //am startservice -e "show-message-and-movie" "my message" com.mattfenlon.ghost/.MainService
         //am startservice -e "play-movie-url" "<null>" com.mattfenlon.ghost/.MainService
@@ -42,8 +47,9 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "[LMS]startService");
         Intent service = new Intent(this, MainService.class);
         //service.putExtra("show-message", "launchMainService " + svc.hashCode());
-        service.putExtra("play-movie-url", "<null>");
+        //service.putExtra("play-movie-url", "<null>");
         //service.putExtra("play-music-url", "<null>");
+        service.putExtra("show-message-and-ringtone", "ringtone message");
         // https://stackoverflow.com/questions/46445265/android-8-0-java-lang-illegalstateexception-not-allowed-to-start-service-inten
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(service);
@@ -58,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void checkDrawOverlayPermission() {
         // Checks if app already has permission to draw overlays
-        if (!Settings.canDrawOverlays(this)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             Log.i(TAG, "[CDOP]request overlay permission");
             // If not, form up an Intent to launch the permission request
             Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
@@ -69,6 +75,12 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("extra_prefs_set_back_text", getString(R.string.txtCancel));
             // Launch Intent, with the supplied request code
             startActivityForResult(intent, REQUEST_CODE);
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Log.d(TAG, "check overlay permission okay!");
+            } else {
+                Log.d(TAG, "No need Overlays");
+            }
         }
     }
 

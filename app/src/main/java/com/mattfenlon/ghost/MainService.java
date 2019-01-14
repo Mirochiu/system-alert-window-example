@@ -1,13 +1,12 @@
 package com.mattfenlon.ghost;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.drm.DrmStore;
 import android.graphics.PixelFormat;
+import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.SystemClock;
@@ -32,7 +31,8 @@ public class MainService extends Service implements View.OnTouchListener {
     private static String TAG = MainService.class.getSimpleName();
 
     public static final String EXTRA_SHOW_MESSAGE = "show-message";
-    public static final String EXTRA_SHOW_MESSAGE_AND_RINGTON = "show-message-and-rington";
+    public static final String EXTRA_SHOW_MESSAGE_AND_RINGTONE = "show-message-and-ringtone";
+    public static final String EXTRA_SHOW_MESSAGE_AND_MUSIC = "show-message-and-music";
     public static final String EXTRA_SHOW_MESSAGE_AND_MOVIE = "show-message-and-movie";
     public static final String EXTRA_PLAY_MOVIE_URL = "play-movie-url";
     public static final String EXTRA_PLAY_MUSIC_URL = "play-music-url";
@@ -112,11 +112,16 @@ public class MainService extends Service implements View.OnTouchListener {
     private void startMyOwnForeground() {
         String NOTIFICATION_CHANNEL_ID = getApplicationContext().getPackageName();
         String channelName = getClass().getSimpleName();
-        NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
-        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        assert manager != null;
-        manager.createNotificationChannel(chan);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            android.app.NotificationChannel chan = new android.app.NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
+            chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            assert manager != null;
+            manager.createNotificationChannel(chan);
+        } else {
+            Log.d(TAG, "system below Oreo, no NotificationChannel");
+        }
 
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
         Notification notification = notificationBuilder.setOngoing(true)
@@ -181,7 +186,9 @@ public class MainService extends Service implements View.OnTouchListener {
         try {
             if (intent.hasExtra(EXTRA_SHOW_MESSAGE)) {
                 onShowMessage(intent);
-            } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_RINGTON)) {
+            } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_RINGTONE)) {
+                onShowMessage(intent);
+            } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_MUSIC)) {
                 onShowMessage(intent);
             } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_MOVIE)) {
                 onShowMessage(intent);
@@ -244,13 +251,22 @@ public class MainService extends Service implements View.OnTouchListener {
             displayTxt = msg;
         }
         if (null == msg) {
-            msg = intent.getStringExtra(EXTRA_SHOW_MESSAGE_AND_RINGTON);
+            msg = intent.getStringExtra(EXTRA_SHOW_MESSAGE_AND_MUSIC);
             if (!TextUtils.isEmpty(msg)) {
-                Log.v(TAG, EXTRA_SHOW_MESSAGE_AND_RINGTON + "=>" + msg);
+                Log.v(TAG, EXTRA_SHOW_MESSAGE_AND_MUSIC + "=>" + msg);
                 displayTxt = msg;
                 // mp3 from AOSP
                 // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
                 player.playAsset("MP3_48KHz_128kbps_s_1_17.mp3", MainPlayer.TYPE_MUSIC);
+            }
+        }
+        if (null == msg) {
+            msg = intent.getStringExtra(EXTRA_SHOW_MESSAGE_AND_RINGTONE);
+            if (!TextUtils.isEmpty(msg)) {
+                Log.v(TAG, EXTRA_SHOW_MESSAGE_AND_RINGTONE + "=>" + msg);
+                displayTxt = msg;
+                //player.playRingtone(RingtoneManager.TYPE_NOTIFICATION); // nul uri
+                player.playRingtone(RingtoneManager.TYPE_RINGTONE);  // null uri
             }
         }
         if (null == msg) {

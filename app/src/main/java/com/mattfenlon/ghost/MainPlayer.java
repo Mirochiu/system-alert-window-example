@@ -13,9 +13,11 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.view.SurfaceHolder;
 
+import com.example.android.mediasession.service.PlayerAdapter;
+
 import java.io.FileDescriptor;
 
-public class MainPlayer {
+public class MainPlayer extends PlayerAdapter {
     private static String TAG = MainPlayer.class.getSimpleName();
     private static boolean DEBUG = true;
 
@@ -48,6 +50,45 @@ public class MainPlayer {
     private Handler handler;
     private Ringtone ring;
 
+    @Override
+    public boolean isPlaying() {
+        Log.v(TAG, "isPlaying");
+        synchronized (mpLock) {
+            if (null != mp) return mp.isPlaying();
+        }
+        return false;
+    }
+
+    @Override
+    public void setVolume(float volume) {
+        Log.v(TAG, "setVolume " + volume);
+        synchronized (mpLock) {
+            if (null != mp) mp.setVolume(volume, volume);
+        }
+    }
+
+    @Override
+    protected void onPlay() {
+        Log.v(TAG, "onPlay");
+        synchronized (mpLock) {
+            if (null != mp) mp.start();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        Log.v(TAG, "onPause");
+        synchronized (mpLock) {
+            if (null != mp) mp.pause();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        Log.v(TAG, "onStop");
+        stopPlayback();
+    }
+
     public interface Callback {
         SurfaceHolder onDisplayRequired();
         void onError(MainPlayer player, int i1, int i2);
@@ -56,6 +97,7 @@ public class MainPlayer {
     }
 
     public MainPlayer(Context context, Callback callback) {
+        super(context);
         if (DEBUG) Log.v(TAG, "in MainPlayer");
         this.context = context;
         if (null == callback) callback = DEFAULT_CALLBACK;

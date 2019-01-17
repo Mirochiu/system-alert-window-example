@@ -20,8 +20,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.os.Build;
+import android.os.Handler;
 import android.support.annotation.NonNull;
+import android.util.Log;
 //import android.support.v4.media.MediaMetadataCompat;
 //import android.support.v4.media.session.PlaybackStateCompat;
 
@@ -32,7 +37,7 @@ import android.support.annotation.NonNull;
  * and audio focus.
  */
 public abstract class PlayerAdapter {
-
+    private static final String TAG = PlayerAdapter.class.getSimpleName();
     private static final float MEDIA_VOLUME_DEFAULT = 1.0f;
     private static final float MEDIA_VOLUME_DUCK = 0.2f;
 
@@ -61,7 +66,7 @@ public abstract class PlayerAdapter {
     public PlayerAdapter(@NonNull Context context) {
         mApplicationContext = context.getApplicationContext();
         mAudioManager = (AudioManager) mApplicationContext.getSystemService(Context.AUDIO_SERVICE);
-        mAudioFocusHelper = new AudioFocusHelper();
+        mAudioFocusHelper = new AudioFocusHelper(null);
     }
 
     //public abstract void playFromMedia(MediaMetadataCompat  metadata);
@@ -131,16 +136,45 @@ public abstract class PlayerAdapter {
      */
     private final class AudioFocusHelper
             implements AudioManager.OnAudioFocusChangeListener {
+        private AudioAttributes mPlaybackAttributes;
+        private AudioFocusRequest mFocusRequest;
+
+        public AudioFocusHelper(Handler handler) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.v(TAG, "System is above oreo");
+                mPlaybackAttributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build();
+                mFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(mPlaybackAttributes)
+                        .setAcceptsDelayedFocusGain(true)
+                        .setWillPauseWhenDucked(true)
+                        .setOnAudioFocusChangeListener(mAudioFocusHelper, handler)
+                        .build();
+            }
+        }
 
         private boolean requestAudioFocus() {
-            final int result = mAudioManager.requestAudioFocus(this,
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN);
+            int result;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.v(TAG, "System is above oreo");
+                result = mAudioManager.requestAudioFocus(mFocusRequest);
+            } else {
+                result = mAudioManager.requestAudioFocus(AudioFocusHelper.this,
+                        AudioManager.STREAM_MUSIC,
+                        AudioManager.AUDIOFOCUS_GAIN);
+            }
             return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
         }
 
         private void abandonAudioFocus() {
-            mAudioManager.abandonAudioFocus(this);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.v(TAG, "System is above oreo");
+                mAudioManager.abandonAudioFocusRequest(mFocusRequest);
+            } else {
+                mAudioManager.abandonAudioFocus(AudioFocusHelper.this);
+            }
         }
 
         @Override
@@ -164,7 +198,7 @@ public abstract class PlayerAdapter {
                     }
                     break;
                 case AudioManager.AUDIOFOCUS_LOSS:
-                    mAudioManager.abandonAudioFocus(this);
+                    mAudioManager.abandonAudioFocus(AudioFocusHelper.this);
                     mPlayOnAudioFocus = false;
                     stop();
                     break;

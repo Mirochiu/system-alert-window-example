@@ -89,7 +89,7 @@ public class MainService extends Service implements View.OnTouchListener {
         @Override
         public void onError(MainPlayer player, int i, int i1) {
             Log.v(TAG, "play got error " + i + " " + i1);
-            player.stopPlayback();
+            player.stop();
             Toast.makeText(getApplicationContext(), "playback error " + i + ","+ i1, Toast.LENGTH_LONG).show();
         }
         @Override
@@ -285,7 +285,7 @@ public class MainService extends Service implements View.OnTouchListener {
     private void onRemoveMessage() {
         Log.v(TAG, "[ORM]");
         removeOverlayView();
-        if (null != player) player.stopPlayback();
+        if (null != player) player.stop();
     }
 
     @Override

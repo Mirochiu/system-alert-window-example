@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -47,15 +48,19 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "[LMS]startService");
         Intent service = new Intent(this, MainService.class);
         //service.putExtra("show-message", "launchMainService " + svc.hashCode());
-        //service.putExtra("play-movie-url", "<null>");
+        service.putExtra("play-movie-url", "<null>");
         //service.putExtra("play-music-url", "<null>");
-        service.putExtra("show-message-and-ringtone", "ringtone message");
+        //service.putExtra("show-message-and-ringtone", "ringtone message");
+        //service.putExtra("play-movie-url", "udp://230.1.2.108:11111/");
+        ContextCompat.startForegroundService(getApplicationContext(), service);
+        /*
         // https://stackoverflow.com/questions/46445265/android-8-0-java-lang-illegalstateexception-not-allowed-to-start-service-inten
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(service);
         } else {
             startService(service);
         }
+        */
         Log.i(TAG, "[LMS]finish");
         finish();
     }
@@ -89,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "[OAR]reqcode" + requestCode + " rescode=" + resultCode + " data=" + data);
         // Check if a request code is received that matches that which we provided for the overlay draw request
         if (requestCode == REQUEST_CODE) {
-            boolean res = Settings.canDrawOverlays(this);
+            boolean res = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this);
             // Double-check that the user granted it, and didn't just dismiss the request
             Log.i(TAG, "[OAR]canDrawOverlays=" + res);
             if (res) {

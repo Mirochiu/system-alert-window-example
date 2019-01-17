@@ -66,7 +66,7 @@ public abstract class PlayerAdapter {
     public PlayerAdapter(@NonNull Context context) {
         mApplicationContext = context.getApplicationContext();
         mAudioManager = (AudioManager) mApplicationContext.getSystemService(Context.AUDIO_SERVICE);
-        mAudioFocusHelper = new AudioFocusHelper(null);
+        mAudioFocusHelper = new AudioFocusHelper(null, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
     }
 
     //public abstract void playFromMedia(MediaMetadataCompat  metadata);
@@ -91,7 +91,6 @@ public abstract class PlayerAdapter {
         if (!mPlayOnAudioFocus) {
             mAudioFocusHelper.abandonAudioFocus();
         }
-
         unregisterAudioNoisyReceiver();
         onPause();
     }
@@ -131,28 +130,51 @@ public abstract class PlayerAdapter {
         }
     }
 
+    public AudioAttributes getAudioAttributes() {
+        return mAudioFocusHelper.getAudioAttributes();
+    }
+
     /**
      * Helper class for managing audio focus related tasks.
      */
     private final class AudioFocusHelper
             implements AudioManager.OnAudioFocusChangeListener {
-        private AudioAttributes mPlaybackAttributes;
-        private AudioFocusRequest mFocusRequest;
+        private final AudioAttributes mAudioAttributes;
+        private final AudioFocusRequest mFocusRequest;
+        private int mAudioFocus;
 
         public AudioFocusHelper(Handler handler) {
+            this(handler, AudioManager.AUDIOFOCUS_GAIN);
+        }
+
+        /**
+         * @param audioFocus AudioManager.AUDIOFOCUS_GAIN(other app => mute/stop permanently),
+         *                   AudioManager.AUDIOFOCUS_GAIN_TRANSIENT(other app => mute/pause temporarily),
+         *                   AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK(other app => lower the volume temporarily),
+         *                   AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE(other app and system => mute temporarily)
+         */
+        public AudioFocusHelper(Handler handler, int audioFocus) {
+            mAudioFocus = audioFocus;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Log.v(TAG, "System is above oreo");
-                mPlaybackAttributes = new AudioAttributes.Builder()
+                mAudioAttributes = new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build();
-                mFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                        .setAudioAttributes(mPlaybackAttributes)
+                mFocusRequest = new AudioFocusRequest.Builder(mAudioFocus)
+                        .setAudioAttributes(mAudioAttributes)
                         .setAcceptsDelayedFocusGain(true)
                         .setWillPauseWhenDucked(true)
                         .setOnAudioFocusChangeListener(mAudioFocusHelper, handler)
                         .build();
+            } else {
+                mAudioAttributes = null;
+                mFocusRequest = null;
             }
+        }
+
+        public AudioAttributes getAudioAttributes() {
+            return mAudioAttributes;
         }
 
         private boolean requestAudioFocus() {
@@ -162,8 +184,7 @@ public abstract class PlayerAdapter {
                 result = mAudioManager.requestAudioFocus(mFocusRequest);
             } else {
                 result = mAudioManager.requestAudioFocus(AudioFocusHelper.this,
-                        AudioManager.STREAM_MUSIC,
-                        AudioManager.AUDIOFOCUS_GAIN);
+                        AudioManager.STREAM_MUSIC, mAudioFocus);
             }
             return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
         }
@@ -181,6 +202,7 @@ public abstract class PlayerAdapter {
         public void onAudioFocusChange(int focusChange) {
             switch (focusChange) {
                 case AudioManager.AUDIOFOCUS_GAIN:
+                    Log.v(TAG, "AudioManager.AUDIOFOCUS_GAIN");
                     if (mPlayOnAudioFocus && !isPlaying()) {
                         play();
                     } else if (isPlaying()) {
@@ -189,15 +211,18 @@ public abstract class PlayerAdapter {
                     mPlayOnAudioFocus = false;
                     break;
                 case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                    Log.v(TAG, "AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK");
                     setVolume(MEDIA_VOLUME_DUCK);
                     break;
                 case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                    Log.v(TAG, "AudioManager.AUDIOFOCUS_LOSS_TRANSIENT");
                     if (isPlaying()) {
                         mPlayOnAudioFocus = true;
                         pause();
                     }
                     break;
                 case AudioManager.AUDIOFOCUS_LOSS:
+                    Log.v(TAG, "AudioManager.AUDIOFOCUS_LOSS");
                     mAudioManager.abandonAudioFocus(AudioFocusHelper.this);
                     mPlayOnAudioFocus = false;
                     stop();

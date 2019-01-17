@@ -3,6 +3,7 @@ package com.mattfenlon.ghost;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -103,18 +104,18 @@ public class MainPlayer extends PlayerAdapter {
         if (null == callback) callback = DEFAULT_CALLBACK;
         this.callback = callback;
         try {
-            handlerThread = new HandlerThread("service-thread");
+            handlerThread = new HandlerThread("player-thread");
             handlerThread.start();
             handler = new Handler(handlerThread.getLooper());
         } catch (Exception e) {
-            Log.e(TAG, "[OC] service thread error:" +e.getMessage());
+            Log.e(TAG, "player thread error:" +e.getMessage());
         }
     }
 
     public void release() {
         if (DEBUG) Log.v(TAG, "in release");
         callback = DEFAULT_CALLBACK;
-        stopPlayback();
+        stop();
         try {
             if (null != handler) {
                 handler.removeCallbacksAndMessages(null);
@@ -128,7 +129,7 @@ public class MainPlayer extends PlayerAdapter {
         }
     }
 
-    public void stopPlayback() {
+    protected void stopPlayback() {
         if (DEBUG) Log.v(TAG, "in stopPlayback");
         synchronized (mpLock) {
             try {
@@ -157,6 +158,7 @@ public class MainPlayer extends PlayerAdapter {
         }
     }
     /**
+     * not supported audio focus for Ringtone playback
      * @param type
      *  RingtoneManager.TYPE_ALARM
      *  RingtoneManager.TYPE_ALL
@@ -181,7 +183,7 @@ public class MainPlayer extends PlayerAdapter {
         if (null == resource) {
             callback.onError(this, -3,  -1);
         } else {
-            stopPlayback();
+            stop();
             try {
                 ring = RingtoneManager.getRingtone(context, resource);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -225,6 +227,17 @@ public class MainPlayer extends PlayerAdapter {
                     synchronized (mpLock) {
                         if (DEBUG)  Log.v(TAG, "new mp");
                         mp = new MediaPlayer();
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                            if (DEBUG) Log.v(TAG, "setAudioStreamType STREAM_MUSIC");
+                            mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                        } else {
+                            if (null == getAudioAttributes()) {
+                                if (DEBUG) Log.v(TAG, "AudioAttributes available");
+                                mp.setAudioAttributes(getAudioAttributes());
+                            } else {
+                                if (DEBUG) Log.v(TAG, "AudioAttributes not available");
+                            }
+                        }
                         if (mediaSource instanceof FileDescriptor) {
                             if (DEBUG) Log.v(TAG, "play from FileDescriptor");
                             mp.setDataSource((FileDescriptor) mediaSource);
@@ -254,13 +267,14 @@ public class MainPlayer extends PlayerAdapter {
                                     }
                                 }
                                 if (DEBUG) Log.v(TAG, "start play");
-                                mp.start();
+                                play();
                                 callback.onStart(MainPlayer.this);
                             }
                         });
                         mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                             @Override
                             public boolean onError(MediaPlayer mediaPlayer, int i, int i1) {
+                                stop();
                                 callback.onError(MainPlayer.this, i, i1);
                                 return false;
                             }
@@ -268,6 +282,7 @@ public class MainPlayer extends PlayerAdapter {
                         mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                             @Override
                             public void onCompletion(MediaPlayer mediaPlayer) {
+                                stop();
                                 callback.onCompletion (MainPlayer.this);
                             }
                         });

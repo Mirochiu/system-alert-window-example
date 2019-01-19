@@ -60,13 +60,15 @@ public abstract class PlayerAdapter {
     private final Context mApplicationContext;
     private final AudioManager mAudioManager;
     private final AudioFocusHelper mAudioFocusHelper;
+    private final Handler mHandler;
 
     private boolean mPlayOnAudioFocus = false;
 
     public PlayerAdapter(@NonNull Context context) {
         mApplicationContext = context.getApplicationContext();
         mAudioManager = (AudioManager) mApplicationContext.getSystemService(Context.AUDIO_SERVICE);
-        mAudioFocusHelper = new AudioFocusHelper(null, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+        mHandler = new Handler(mApplicationContext.getMainLooper());
+        mAudioFocusHelper = new AudioFocusHelper(mHandler, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
     }
 
     //public abstract void playFromMedia(MediaMetadataCompat  metadata);
@@ -143,7 +145,7 @@ public abstract class PlayerAdapter {
         private final AudioFocusRequest mFocusRequest;
         private int mAudioFocus;
 
-        public AudioFocusHelper(Handler handler) {
+        public AudioFocusHelper(@NonNull Handler handler) {
             this(handler, AudioManager.AUDIOFOCUS_GAIN);
         }
 
@@ -153,7 +155,7 @@ public abstract class PlayerAdapter {
          *                   AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK(other app => lower the volume temporarily),
          *                   AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE(other app and system => mute temporarily)
          */
-        public AudioFocusHelper(Handler handler, int audioFocus) {
+        public AudioFocusHelper(@NonNull Handler handler, int audioFocus) {
             mAudioFocus = audioFocus;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Log.v(TAG, "System is above oreo");
@@ -165,7 +167,7 @@ public abstract class PlayerAdapter {
                         .setAudioAttributes(mAudioAttributes)
                         .setAcceptsDelayedFocusGain(true)
                         .setWillPauseWhenDucked(true)
-                        .setOnAudioFocusChangeListener(mAudioFocusHelper, handler)
+                        .setOnAudioFocusChangeListener(AudioFocusHelper.this, handler)
                         .build();
             } else {
                 mAudioAttributes = null;

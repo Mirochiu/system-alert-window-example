@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/Screen"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00222222"
+    android:paddingLeft="50px"
+    android:paddingTop="30px"
+    android:paddingRight="50px"
+    android:paddingBottom="30px">
+
+    <LinearLayout
+        android:id="@+id/Window"
+        android:layout_width="420px"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentRight="true"
+        android:background="@drawable/vsmfw_background"
+        android:orientation="vertical"
+        android:paddingLeft="24px"
+        android:paddingTop="20px"
+        android:paddingRight="22px"
+        android:paddingBottom="7px">
+
+        <TextView
+            android:id="@+id/Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:drawableLeft="@drawable/app_icon_36px"
+            android:drawablePadding="7px"
+            android:gravity="center_vertical"
+            android:maxHeight="36px"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:text="@string/title_sample"
+            android:textAlignment="viewStart"
+            android:textColor="@color/colorNormalText"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/Content"
+            android:layout_width="match_parent"
+            android:layout_height="133px"
+            android:gravity="top"
+            android:maxHeight="133px"
+            android:maxLines="5"
+            android:text="@string/content_sample"
+            android:textColor="@color/colorNormalText"
+            android:textSize="22sp"
+            android:typeface="monospace"
+            app:lineHeight="27px" />
+
+        <ImageView
+            android:id="@+id/Image"
+            android:layout_width="350px"
+            android:layout_height="146px"
+            android:layout_marginLeft="12px"
+            android:layout_marginRight="12px"
+            android:layout_marginBottom="10px"
+            android:background="@drawable/sample_img"
+            android:maxWidth="350px"
+            android:maxHeight="146px"
+            android:visibility="visible"
+            app:srcCompat="@color/colorPrimaryDark" />
+
+        <LinearLayout
+            android:id="@+id/Hint"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_gravity="right"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/Hint2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="25px"
+                android:layout_weight="1"
+                android:drawableLeft="@drawable/icon_r_30px"
+                android:drawablePadding="7px"
+                android:gravity="center"
+                android:text="@string/hintClose"
+                android:textColor="@color/colorNormalText"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:typeface="monospace" />
+
+            <TextView
+                android:id="@+id/Hint3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:drawableLeft="@drawable/icon_g_30px"
+                android:drawablePadding="7px"
+                android:gravity="center"
+                android:text="@string/hintGo"
+                android:textColor="@color/colorNormalText"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:typeface="monospace" />
+        </LinearLayout>
+
+    </LinearLayout>
+</RelativeLayout>

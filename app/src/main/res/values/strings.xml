@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">Ghost</string>
     <string name="txtCancel">取消</string>
+    <string name="VSMFW_hint">確認</string>
+    <string name="hintClose">關閉</string>
+    <string name="hintGo">前往</string>
+    <string name="title_sample">KKTV好康報報</string>
+    <string name="content_sample">MOD豬事大吉！200萬好禮送給你！！ 1/30～2/14鴻運當頭刮刮樂!還有看電影 抽好禮、優惠電影繽紛樂、免費專區！ 抽好禮、優惠電影繽紛樂、免費專區！ 抽好禮、優惠電影繽紛樂、免費專區！</string>
 </resources>

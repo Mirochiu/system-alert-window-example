@@ -3,4 +3,9 @@
     <color name="colorPrimary">#3F51B5</color>
     <color name="colorPrimaryDark">#80303f9f</color>
     <color name="colorAccent">#FF4081</color>
+    <color name="colorEmergency">#F2FF0000</color>
+    <color name="colorEmergencyText">#FFFFFFFF</color>
+    <color name="colorNormalText">#FF000000</color>
+    <color name="colorVSMFW_Normal">#f2d8d8d8</color>
+    <color name="colorVSMFW_Emergency">#F2FF0000</color>
 </resources>

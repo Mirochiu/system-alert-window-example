@@ -5,9 +5,16 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.support.v4.app.NotificationCompat;
@@ -24,11 +31,15 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainService extends Service implements View.OnTouchListener {
     private static String TAG = MainService.class.getSimpleName();
+
+    public static String ACTION_FLOATING_WINDOWS = "tw.com.chttl.FloatingWindows.message";
 
     public static final String EXTRA_SHOW_MESSAGE = "show-message";
     public static final String EXTRA_SHOW_MESSAGE_AND_RINGTONE = "show-message-and-ringtone";
@@ -49,6 +60,8 @@ public class MainService extends Service implements View.OnTouchListener {
     private MainPlayer player;
     private SurfaceHolder holderForVideoPlayback = null;
     private SurfaceHolder surfaceHolder;
+    private HandlerThread handlerThread;
+    private Handler handler;
 
     private SurfaceHolder.Callback holderCallback = new SurfaceHolder.Callback() {
         @Override
@@ -162,11 +175,31 @@ public class MainService extends Service implements View.OnTouchListener {
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         layoutInflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         player = new MainPlayer(getApplication().getApplicationContext(), playerCallback);
+        handlerThread = new HandlerThread("service-thread");
+        handlerThread.start();
+        handler = new Handler(handlerThread.getLooper());
     }
 
     @Override
     public void onDestroy() {
         Log.i(TAG, "[OD]");
+        try {
+            if (null != handler) {
+                handlerThread.quitSafely();
+                handlerThread.join(3000);
+            }
+        } catch (InterruptedException e) {
+            Log.d(TAG, "stop service thread exception", e);
+        } finally {
+            handlerThread = null;
+        }
+        try {
+            if (null != handler) {
+                handler.removeCallbacksAndMessages(null);
+            }
+        } finally {
+            handler = null;
+        }
         try {
             if (null != player) {
                 player.release();
@@ -184,7 +217,9 @@ public class MainService extends Service implements View.OnTouchListener {
     public int onStartCommand (Intent intent, int flags, int startId) {
         Log.v(TAG, "[OSC]");
         try {
-            if (intent.hasExtra(EXTRA_SHOW_MESSAGE)) {
+            if (ACTION_FLOATING_WINDOWS.equals(intent.getAction())) {
+                onVSMFloatingWindowProcess(intent);
+            } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE)) {
                 onShowMessage(intent);
             } else if (intent.hasExtra(EXTRA_SHOW_MESSAGE_AND_RINGTONE)) {
                 onShowMessage(intent);
@@ -205,6 +240,285 @@ public class MainService extends Service implements View.OnTouchListener {
             Log.e(TAG, "[OSC] got exception ", e);
         }
         return START_NOT_STICKY;
+    }
+
+    final static int DEFAULT_BACKGROUND_COLOR = Color.WHITE;
+    final static int DEFAULT_FOREGROUND_COLOR = Color.BLACK;
+    final static int DEFAULT_KEYCODE = KeyEvent.KEYCODE_DPAD_CENTER;
+    final static int DEFAULT_POSITION = 3;
+    final static int DEFAULT_TIMEOUT = 1000;
+
+    private void onVSMFloatingWindowProcess(Intent intent) {
+        // #1
+        String version = intent.getStringExtra("version");
+        Log.d(TAG, " version:" + version);
+        if (!"1.0".equals(version)) {
+            Log.e(TAG,"invalid version " + version);
+        }
+        // #2
+        String actionName = intent.getStringExtra("actionName");
+        Log.d(TAG, " actionName:" + actionName); // pkgName
+        // #3
+        String title = intent.getStringExtra("title");
+        Log.d(TAG, " title:" + title);
+        String[] titleArgs = title.split("@");
+        String titleString = "No title";
+        int titleBgcolor = DEFAULT_BACKGROUND_COLOR;
+        int titleFgcolor = DEFAULT_FOREGROUND_COLOR;
+        if (titleArgs.length >= 1 && titleArgs.length <= 3) {
+            titleString = titleArgs[0];
+            titleBgcolor = (titleArgs.length>=2) ? Color.parseColor("#" + titleArgs[1]) : DEFAULT_BACKGROUND_COLOR;
+            titleFgcolor = (titleArgs.length>=3) ? Color.parseColor("#" + titleArgs[2]) : DEFAULT_FOREGROUND_COLOR;
+            Log.d(TAG, "title:" + titleString + " bg:" + titleBgcolor + " fg:" + titleFgcolor);
+        } else {
+            Log.e(TAG, "invalid title arg length " + titleArgs.length);
+        }
+        // #4
+        String content = intent.getStringExtra("content");
+        Log.d(TAG, " content:" + content);
+        String[] contentArgs = content.split("@");
+        String contentString = "No content";
+        int contentBgcolor = DEFAULT_BACKGROUND_COLOR;
+        int contentFgcolor = DEFAULT_FOREGROUND_COLOR;
+        String imgUrl = null;
+        if (contentArgs.length >= 1 && contentArgs.length <= 4) {
+            contentString = contentArgs[0];
+            contentBgcolor = (contentArgs.length>=2) ? Color.parseColor("#" + contentArgs[1]) : DEFAULT_BACKGROUND_COLOR;
+            contentFgcolor = (contentArgs.length>=3) ? Color.parseColor("#" + contentArgs[2]) : DEFAULT_FOREGROUND_COLOR;
+            imgUrl = (contentArgs.length>=4) ? contentArgs[3] : null;
+            Log.d(TAG, "content:" + contentString + " bg:" + contentBgcolor + " fg:" + contentFgcolor + " url:" + imgUrl);
+        } else {
+            Log.e(TAG, "invalid content arg length " + contentArgs.length);
+        }
+        // #5
+        String hint = intent.getStringExtra("hint");
+        Log.d(TAG, " hint:" + hint);
+        String[] hint_args = hint.split("@");
+        String hintString = "hint";
+        int hintKeycode = DEFAULT_KEYCODE;
+        if (hint_args.length >= 1 && hint_args.length <= 2) {
+            hintString = hint_args[0];
+            switch (hint_args[1]) {
+                case "RED":     hintKeycode = KeyEvent.KEYCODE_PROG_RED; break;
+                case "GREEN":   hintKeycode = KeyEvent.KEYCODE_PROG_GREEN; break;
+                case "BLUE":    hintKeycode = KeyEvent.KEYCODE_PROG_BLUE; break;
+                case "YELLOW":  hintKeycode = KeyEvent.KEYCODE_PROG_YELLOW; break;
+                default:
+                    Log.e(TAG, "invalid hint keycode " + hint_args[1]);
+                    break;
+            }
+            Log.d(TAG, "hint:" + hintString + " key:" + hintKeycode);
+        } else {
+            Log.e(TAG, "invalid hint arg length " + hint_args.length);
+        }
+        // #6
+        int position = intent.getIntExtra("position", DEFAULT_POSITION);
+        Log.d(TAG, "position:" + position);
+        // #7
+        int timeout = intent.getIntExtra("timeout", DEFAULT_TIMEOUT);
+        Log.d(TAG, "timeout:" + timeout);
+        // #8
+        boolean emergency = intent.getBooleanExtra("emergency", false);
+        Log.d(TAG, "emergency:" + emergency);
+        addOverlayCustomizedView(createVSMFWOverlayView(
+                actionName,
+                titleString, titleBgcolor, titleFgcolor,
+                contentString, contentBgcolor, contentFgcolor, imgUrl,
+                hintString, hintKeycode,
+                position, emergency));
+        handler.postDelayed(runnerForRemovingMsg, timeout);
+    }
+
+    private View createVSMFWOverlayView(
+            String pkgName,
+            String title, int titleBgcolor, int titleFgcolor,
+            String content, int contentBgcolor, int contentFgcolor, String imgUrl,
+            String hint, final int hintKey,
+            int position, boolean isEmergency) {
+        View view;
+        view = layoutInflater.inflate(R.layout.vsm_floating_window, new RelativeLayout(this) {
+            final int keycode = hintKey;
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent ev) {
+                Log.v(TAG, "dispatchTouchEvent " + ev);
+                boolean ret = super.dispatchTouchEvent(ev);
+                Log.d(TAG, "dispatchTouchEvent ret=" + ret + " " + ev);
+                return ret;
+            }
+            @Override
+            public boolean dispatchKeyEvent(KeyEvent event) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (event.getKeyCode() == keycode) {
+                        Log.v(TAG, "keycoede:" + keycode + " pressed");
+                        onRemoveMessage();
+                        return true;
+                    }
+                }
+                boolean ret = super.dispatchKeyEvent(event);
+                /* test code beg */
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    Log.v(TAG, "key:" + event + " ret:" + ret);
+                }
+                /* test code end */
+                return ret;
+            }
+        });
+        if (isEmergency) {
+            if (Build.VERSION.SDK_INT >= 23) {
+                view.setBackgroundColor(getColor(R.color.colorEmergency));
+            } else{
+                view.setBackgroundColor(getResources().getColor(R.color.colorEmergency));
+            }
+        }
+        TextView titleComp = view.findViewById(R.id.Title);
+        if (TextUtils.isEmpty(title)) {
+            titleComp.setVisibility(View.GONE);
+        } else {
+            titleComp.setVisibility(View.VISIBLE);
+            Drawable titleDrawable = null;
+            if (!TextUtils.isEmpty(pkgName)) {
+                try {
+                    // https://stackoverflow.com/questions/11961599/get-resource-id-of-the-icon-of-another-android-application
+                    titleDrawable = getPackageManager().getApplicationIcon(pkgName);
+                    Log.d(TAG, "get app icon drawable" + titleDrawable);
+                } catch (PackageManager.NameNotFoundException e) {
+                    Log.e(TAG, "error get app icon:", e);
+                }
+            }
+            if (null != titleDrawable) {
+                titleDrawable.setBounds(0, 0, 36, 36);
+                titleComp.setCompoundDrawables(titleDrawable, null, null, null);
+                titleComp.setCompoundDrawablePadding(7);
+            } else {
+                titleComp.setCompoundDrawables(null, null, null, null);
+            }
+            titleComp.setText(title);
+            //titleComp.setBackgroundColor(titleBgcolor);
+            if (isEmergency) {
+                titleComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
+            } else {
+                titleComp.setTextColor(getResources().getColor(R.color.colorNormalText));
+            }
+            titleComp.setTypeface(titleComp.getTypeface(), Typeface.BOLD);
+        }
+
+        TextView contentComp = view.findViewById(R.id.Content);
+        Log.d(TAG, "setText(content):" + content);
+        contentComp.setText(content);
+        //contentComp.setBackgroundColor(contentBgcolor);
+        contentComp.setTextColor(contentFgcolor);
+        if (isEmergency) {
+            contentComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
+            contentComp.setTypeface(contentComp.getTypeface(), Typeface.BOLD);
+        } else {
+            contentComp.setTextColor(getResources().getColor(R.color.colorNormalText));
+            contentComp.setTypeface(contentComp.getTypeface(), Typeface.NORMAL);
+        }
+
+        ImageView imageComp = view.findViewById(R.id.Image);
+        if (null != imgUrl) {
+            Log.d(TAG, "setup image url:" + imgUrl);
+            imageComp.setVisibility(View.VISIBLE);
+            imageComp.setImageURI(Uri.parse(imgUrl));
+        } else {
+            imageComp.setVisibility(View.GONE);
+        }
+
+        TextView hint2Comp = view.findViewById(R.id.Hint2);
+        // TODO - not supported
+        hint2Comp.setVisibility(View.GONE);
+
+        TextView hintComp = view.findViewById(R.id.Hint3);
+        hintComp.setText(hint);
+        if (isEmergency) {
+            hintComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
+            hintComp.setTypeface(hintComp.getTypeface(), Typeface.BOLD);
+        } else {
+            hintComp.setTextColor(getResources().getColor(R.color.colorNormalText));
+            hintComp.setTypeface(hintComp.getTypeface(), Typeface.NORMAL);
+        }
+        Drawable hintDrawable = null;
+        switch (hintKey) {
+            case KeyEvent.KEYCODE_PROG_RED:
+                hintDrawable = getResources().getDrawable(R.drawable.icon_r_30px);
+                break;
+            case KeyEvent.KEYCODE_PROG_GREEN:
+                hintDrawable = getResources().getDrawable(R.drawable.icon_g_30px);
+                break;
+            case KeyEvent.KEYCODE_PROG_BLUE:
+                hintDrawable = getResources().getDrawable(R.drawable.icon_b_36px);
+                break;
+            case KeyEvent.KEYCODE_PROG_YELLOW:
+                //hintDrawable = getResources().getDrawable(R.drawable.icon_y_30px);
+                break;
+            default:
+                Log.d(TAG, "error hint key:" + hintKey);
+                break;
+        }
+        if (null != hintDrawable) {
+            hintDrawable.setBounds(0, 0, 30, 30);
+            hintComp.setCompoundDrawables(hintDrawable, null, null, null);
+            hintComp.setCompoundDrawablePadding(7);
+        } else {
+            hintComp.setCompoundDrawables(null, null, null, null);
+        }
+        LinearLayout window = view.findViewById(R.id.Window);
+        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams)window.getLayoutParams();
+        switch (position) {
+            case 0:
+                Log.d(TAG, "CENTER");
+                params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                break;
+            case 1:
+                Log.d(TAG, "LEFTTOP");
+                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
+                params.addRule(RelativeLayout.ALIGN_PARENT_LEFT, RelativeLayout.TRUE);
+                params.addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                break;
+            case 2:
+                Log.d(TAG, "LEFTBOTTOM");
+                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
+                params.addRule(RelativeLayout.ALIGN_PARENT_LEFT, RelativeLayout.TRUE);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
+                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                break;
+            default:
+            case 3:
+                Log.d(TAG, "RIGHTTOP");
+                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
+                params.addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE);
+                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                break;
+            case 4:
+                Log.d(TAG, "RIGHTBOTTOM");
+                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
+                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
+                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
+                params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, RelativeLayout.TRUE);
+                break;
+        }
+        window.setLayoutParams(params);
+        return view;
+    }
+
+    private RemoveMessageRunnable runnerForRemovingMsg = new RemoveMessageRunnable();
+    class RemoveMessageRunnable implements Runnable {
+        @Override
+        public void run() {
+            removeOverlayView();
+            if (null != player) player.stop();
+            //onRemoveMessage();
+        }
     }
 
     private boolean onPlayUrl(Intent intent) {
@@ -284,8 +598,8 @@ public class MainService extends Service implements View.OnTouchListener {
 
     private void onRemoveMessage() {
         Log.v(TAG, "[ORM]");
-        removeOverlayView();
-        if (null != player) player.stop();
+        handler.removeCallbacks(runnerForRemovingMsg);
+        handler.post(runnerForRemovingMsg);
     }
 
     @Override
@@ -376,6 +690,19 @@ public class MainService extends Service implements View.OnTouchListener {
             }
         });
         return view;
+    }
+
+    private void addOverlayCustomizedView(View view) {
+        if (null == view) return;
+        synchronized (this) {
+            // already set view
+            if (null != floatyView) {
+                Log.d(TAG, "[AOCV] has a view on screen, remove it");
+                removeOverlayView();
+            }
+            Log.v(TAG, "[AOCV] wm.addView");
+            windowManager.addView(floatyView = view, wmLayoutParam);
+        }
     }
 
     private void addOverlayView() {

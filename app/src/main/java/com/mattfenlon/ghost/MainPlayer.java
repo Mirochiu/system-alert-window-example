@@ -13,10 +13,14 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.view.SurfaceHolder;
+import android.widget.Toast;
 
 import com.example.android.mediasession.service.PlayerAdapter;
 
+import java.io.File;
 import java.io.FileDescriptor;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 public class MainPlayer extends PlayerAdapter {
     private static String TAG = MainPlayer.class.getSimpleName();
@@ -174,6 +178,21 @@ public class MainPlayer extends PlayerAdapter {
         if (null == resource) {
            callback.onError(this, -3,  -1);
         } else {
+            Log.d(TAG, "getScheme=" + resource.getScheme());
+            if ("file".equals(resource.getScheme())) {
+                Log.d(TAG, "getPath=" + resource.getPath());
+                boolean canRead = false;
+                try {
+                    File f = new File(new URI(resource.toString()));
+                    canRead = f.canRead();
+                } catch (URISyntaxException e) {
+                    e.printStackTrace();
+                }
+                if (!canRead) {
+                    Toast.makeText(context, "Cannot read the file located @\n" + resource.toString() , Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
             startPlayback(resource, TYPE_MUSIC);
         }
         */

@@ -264,6 +264,7 @@ public class MainService extends Service implements View.OnTouchListener {
     public final static int TYPE_VIDEOCALL_INTERRUPTED = 5003; // 中斷/關閉視訊訊息
 
     public final static String ACTION_VIDEOCALL_FLOATING_WINDOW_REPLY = "com.modstb.extension.videocall.action.fwreply";
+    public final static String EXTRA_VIDEOCALL_FLOATING_WINDOW_ACTION = "action";
     public final static String EXTRA_VIDEOCALL_FLOATING_WINDOW_REPLY = "reply";
 
     public static ResolveInfo findBestResolveInfo(List<ResolveInfo> list) {
@@ -306,8 +307,9 @@ public class MainService extends Service implements View.OnTouchListener {
         return false;
     }
 
-    public boolean sendVideocallReplyBroadcast(String reply) {
+    public boolean sendVideocallReplyBroadcast(String action, String reply) {
         Intent intent = new Intent(ACTION_VIDEOCALL_FLOATING_WINDOW_REPLY);
+        intent.putExtra(EXTRA_VIDEOCALL_FLOATING_WINDOW_ACTION, action);
         intent.putExtra(EXTRA_VIDEOCALL_FLOATING_WINDOW_REPLY, reply);
         if (isBroadcastReceiverIntent(intent)) {
             setExplicitBroadcastIntent(intent);
@@ -504,7 +506,7 @@ public class MainService extends Service implements View.OnTouchListener {
     }
 
     private View createVSMFWOverlayView(
-            String pkgName, int type,
+            String pkgName, final int type,
             String title, int titleBgcolor, int titleFgcolor,
             String content, int contentBgcolor, int contentFgcolor, String imgUrl,
             String hint, final int hintKey, final String hintReply,
@@ -513,6 +515,7 @@ public class MainService extends Service implements View.OnTouchListener {
             int position) {
         View view;
         view = layoutInflater.inflate(R.layout.vsm_floating_window, new RelativeLayout(this) {
+            final int windowtype = type;
             final int keycode = hintKey;
             final int keycode2 = hint2Key;
             final int keycode3 = hint3Key;
@@ -532,7 +535,10 @@ public class MainService extends Service implements View.OnTouchListener {
                     if (event.getKeyCode() == keycode) {
                         Log.v(TAG, "keycoede:" + keycode + " pressed");
                         if (null != hintReply) {
-                            if (MainService.this.sendVideocallReplyBroadcast(hintReply)) {
+                            if (MainService.this.sendVideocallReplyBroadcast(
+                                    (TYPE_VIDEOCALL_CALLING == windowtype)?
+                                            EXTRA_VIDEOCALL_PICKUP:EXTRA_VIDEOCALL_CANCEL,
+                                    hintReply)) {
                                 Toast.makeText(getApplicationContext(), "send reply", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(getApplicationContext(), "ERROR:cannot send reply", Toast.LENGTH_SHORT).show();
@@ -546,7 +552,7 @@ public class MainService extends Service implements View.OnTouchListener {
                     if (event.getKeyCode() == keycode2) {
                         Log.v(TAG, "keycode2:" + keycode2 + " pressed");
                         if (null != hint2Reply) {
-                            if (MainService.this.sendVideocallReplyBroadcast(hint2Reply)) {
+                            if (MainService.this.sendVideocallReplyBroadcast(EXTRA_VIDEOCALL_HANGHUP, hint2Reply)) {
                                 Toast.makeText(getApplicationContext(), "send reply2", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(getApplicationContext(), "ERROR:cannot send reply2", Toast.LENGTH_SHORT).show();
@@ -560,7 +566,7 @@ public class MainService extends Service implements View.OnTouchListener {
                     if (event.getKeyCode() == keycode3) {
                         Log.v(TAG, "keycode3:" + keycode3 + " pressed");
                         if (null != hint3Reply) {
-                            if (MainService.this.sendVideocallReplyBroadcast(hint3Reply)) {
+                            if (MainService.this.sendVideocallReplyBroadcast(null, hint3Reply)) {
                                 Toast.makeText(getApplicationContext(), "send reply3", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(getApplicationContext(), "ERROR:cannot send reply3", Toast.LENGTH_SHORT).show();

@@ -15,6 +15,7 @@ import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -246,25 +247,22 @@ public class MainService extends Service implements View.OnTouchListener {
         return START_NOT_STICKY;
     }
 
-    final static int DEFAULT_BACKGROUND_COLOR = Color.WHITE;
-    final static int DEFAULT_FOREGROUND_COLOR = Color.BLACK;
-    final static int DEFAULT_KEYCODE = KeyEvent.KEYCODE_DPAD_CENTER;
-    final static int DEFAULT_POSITION = 3;
-    final static int DEFAULT_TIMEOUT = 1000;
+    final static int DEFAULT_TIMEOUT = -1;
 
     // additional extras for videocall
-    public final static String EXTRA_VIDEOCALL_HANGHUP = "videocall.reply.hangup";
-    public final static String EXTRA_VIDEOCALL_PICKUP = "videocall.reply.pickup";
-    public final static String EXTRA_VIDEOCALL_CANCEL = "videocall.reply.cancel";
+    public final static String EXTRA_VIDEOCALL_HANGHUP = "hangup";
+    public final static String EXTRA_VIDEOCALL_PICKUP = "pickup";
+    public final static String EXTRA_VIDEOCALL_CANCEL = "cancel";
 
-    public final static int TYPE_NORMAL = 0; // 一般訊息
-    public final static int TYPE_EMERGENCY = 1; // 緊急訊息
-    public final static int TYPE_VIDEOCALL_CALLING = 5001; // 視訊撥出訊息
-    public final static int TYPE_VIDEOCALL_INCOMING = 5002; // 視訊撥入訊息
-    public final static int TYPE_VIDEOCALL_INTERRUPTED = 5003; // 中斷/關閉視訊訊息
+    public final static String TYPE_NORMAL = "normal"; // 一般訊息
+    public final static String TYPE_WARNING = "warning"; // 緊急訊息
+    public final static String TYPE_CLOSE = "close"; // 中斷/關閉視訊訊息
+    public final static String TYPE_VIDEOCALL_CALLING =
+            "videocall_calling@videocall.reply.cancel"; // 視訊撥出訊息
+    public final static String TYPE_VIDEOCALL_INCOMING =
+            "videocall_calling@videocall.reply.pickup$videocall.reply.hangup"; // 視訊撥入訊息
 
     public final static String ACTION_VIDEOCALL_FLOATING_WINDOW_REPLY = "com.modstb.extension.videocall.action.fwreply";
-    public final static String EXTRA_VIDEOCALL_FLOATING_WINDOW_ACTION = "action";
     public final static String EXTRA_VIDEOCALL_FLOATING_WINDOW_REPLY = "reply";
 
     public static ResolveInfo findBestResolveInfo(List<ResolveInfo> list) {
@@ -307,10 +305,10 @@ public class MainService extends Service implements View.OnTouchListener {
         return false;
     }
 
-    public boolean sendVideocallReplyBroadcast(String action, String reply) {
+    public boolean sendVideocallReplyBroadcast(String action, Bundle reply) {
         Intent intent = new Intent(ACTION_VIDEOCALL_FLOATING_WINDOW_REPLY);
-        intent.putExtra(EXTRA_VIDEOCALL_FLOATING_WINDOW_ACTION, action);
-        intent.putExtra(EXTRA_VIDEOCALL_FLOATING_WINDOW_REPLY, reply);
+        intent.putExtras(reply);
+        //intent.putExtra(EXTRA_VIDEOCALL_FLOATING_WINDOW_REPLY, reply);
         if (isBroadcastReceiverIntent(intent)) {
             setExplicitBroadcastIntent(intent);
             Log.d(TAG, "sendVideocallReplyBroadcast:" + intent);
@@ -331,23 +329,23 @@ public class MainService extends Service implements View.OnTouchListener {
         String actionName = intent.getStringExtra("actionName");
         Log.d(TAG, " actionName:" + actionName); // pkgName
         // add a necessary extra
-        int type = intent.getIntExtra("type", TYPE_NORMAL);
+        String type = intent.getStringExtra("type");
         Log.d(TAG, " floating window type:" + type);
-        String hintReply = null, hint2Reply = null, hint3Reply = null;
+        Bundle hintReply = null, hint2Reply = null;
         switch (type) {
             case TYPE_VIDEOCALL_CALLING:
-                hintReply = intent.getStringExtra(EXTRA_VIDEOCALL_CANCEL);
+                hintReply = intent.getBundleExtra(EXTRA_VIDEOCALL_CANCEL);
                 Log.d(TAG, "cancel:" + hintReply);
                 break;
             case TYPE_VIDEOCALL_INCOMING:
-                hintReply = intent.getStringExtra(EXTRA_VIDEOCALL_PICKUP);
+                hintReply = intent.getBundleExtra(EXTRA_VIDEOCALL_PICKUP);
                 Log.d(TAG, "pickup:" + hintReply);
-                hint2Reply = intent.getStringExtra(EXTRA_VIDEOCALL_HANGHUP);
+                hint2Reply = intent.getBundleExtra(EXTRA_VIDEOCALL_HANGHUP);
                 Log.d(TAG, "hangup:" + hint2Reply);
                 break;
-            case TYPE_VIDEOCALL_INTERRUPTED:
+            case TYPE_CLOSE:
                 // no more extras
-                Log.d(TAG, "videocall interrupted");
+                Log.d(TAG, "close window");
                 handler.post(runnerForRemovingMsg);
                 return;
             default:
@@ -355,180 +353,66 @@ public class MainService extends Service implements View.OnTouchListener {
                 break;
         }
         // #3
-        String title = intent.getStringExtra("title");
-        Log.d(TAG, " title:" + title);
-        String[] titleArgs = title.split("@");
-        String titleString = "No title";
-        int titleBgcolor = DEFAULT_BACKGROUND_COLOR;
-        int titleFgcolor = DEFAULT_FOREGROUND_COLOR;
-        if (titleArgs.length >= 1 && titleArgs.length <= 3) {
-            titleString = titleArgs[0];
-            titleBgcolor = (titleArgs.length >= 2) ? Color.parseColor("#" + titleArgs[1]) : DEFAULT_BACKGROUND_COLOR;
-            titleFgcolor = (titleArgs.length >= 3) ? Color.parseColor("#" + titleArgs[2]) : DEFAULT_FOREGROUND_COLOR;
-            Log.d(TAG, "title:" + titleString + " bg:" + titleBgcolor + " fg:" + titleFgcolor);
-        } else {
-            Log.e(TAG, "invalid title arg length " + titleArgs.length);
-        }
+        String titleString = intent.getStringExtra("title");
+        Log.d(TAG, " title:" + titleString);
         // #4
         String content = intent.getStringExtra("content");
         Log.d(TAG, " content:" + content);
         String[] contentArgs = content.split("@");
         String contentString = "No content";
-        int contentBgcolor = DEFAULT_BACKGROUND_COLOR;
-        int contentFgcolor = DEFAULT_FOREGROUND_COLOR;
         String imgUrl = null;
-        if (contentArgs.length >= 1 && contentArgs.length <= 4) {
+        if (contentArgs.length >= 1 && contentArgs.length <= 2) {
             contentString = contentArgs[0];
-            contentBgcolor = (contentArgs.length >= 2) ? Color.parseColor("#" + contentArgs[1]) : DEFAULT_BACKGROUND_COLOR;
-            contentFgcolor = (contentArgs.length >= 3) ? Color.parseColor("#" + contentArgs[2]) : DEFAULT_FOREGROUND_COLOR;
-            imgUrl = (contentArgs.length >= 4) ? contentArgs[3] : null;
-            Log.d(TAG, "content:" + contentString + " bg:" + contentBgcolor + " fg:" + contentFgcolor + " url:" + imgUrl);
+            imgUrl = (contentArgs.length >= 2) ? contentArgs[1] : null;
+            Log.d(TAG, "content:" + contentString + " url:" + imgUrl);
         } else {
             Log.e(TAG, "invalid content arg length " + contentArgs.length);
         }
-        // #5
-        String hint = intent.getStringExtra("hint");
-        Log.d(TAG, " hint:" + hint);
-        String[] hint_args = hint.split("@");
-        String hintString = "hint";
-        int hintKeycode = DEFAULT_KEYCODE;
-        if (type == TYPE_VIDEOCALL_CALLING) {
+        String hintString = "確認";
+        int hintKeycode = KeyEvent.KEYCODE_PROG_GREEN;
+        if (type.equals(TYPE_VIDEOCALL_CALLING)) {
             Log.d(TAG, " setup hint for making a call");
             hintString = "取消";
             hintKeycode = KeyEvent.KEYCODE_PROG_RED;
-        } else if (type == TYPE_VIDEOCALL_INCOMING) {
+        } else if (type.equals(TYPE_VIDEOCALL_INCOMING)) {
             Log.d(TAG, " setup hint for incoming call");
             hintString = "接起";
             hintKeycode = KeyEvent.KEYCODE_PROG_GREEN;
-        } else if (hint_args.length >= 1 && hint_args.length <= 2) {
-            hintString = hint_args[0];
-            switch (hint_args[1]) {
-                case "RED":
-                    hintKeycode = KeyEvent.KEYCODE_PROG_RED;
-                    break;
-                case "GREEN":
-                    hintKeycode = KeyEvent.KEYCODE_PROG_GREEN;
-                    break;
-                case "BLUE":
-                    hintKeycode = KeyEvent.KEYCODE_PROG_BLUE;
-                    break;
-                case "YELLOW":
-                    hintKeycode = KeyEvent.KEYCODE_PROG_YELLOW;
-                    break;
-                default:
-                    Log.e(TAG, "invalid hint keycode " + hint_args[1]);
-                    break;
-            }
-            Log.d(TAG, "hint:" + hintString + " key:" + hintKeycode);
-        } else {
-            Log.e(TAG, "invalid hint arg length " + hint_args.length);
         }
         // #5-2
-        String hint2 = intent.getStringExtra("hint2");
         String hint2String = null;
         int hint2Keycode = -1;
-        if (type == TYPE_VIDEOCALL_CALLING) {
-            // no hint2
-        } else if (type == TYPE_VIDEOCALL_INCOMING) {
+        if (type.equals(TYPE_VIDEOCALL_INCOMING)) {
             Log.d(TAG, " setup hint2 for incoming call");
             hint2String = "掛斷";
             hint2Keycode = KeyEvent.KEYCODE_PROG_RED;
-        } else if (!TextUtils.isEmpty(hint2)) {
-            Log.d(TAG, " hint2:" + hint2);
-            String[] hint2_args = hint2.split("@");
-            hint2String = "hint2";
-            if (hint2_args.length >= 1 && hint2_args.length <= 2) {
-                hint2String = hint2_args[0];
-                switch (hint2_args[1]) {
-                    case "RED": hintKeycode = KeyEvent.KEYCODE_PROG_RED; break;
-                    case "GREEN": hintKeycode = KeyEvent.KEYCODE_PROG_GREEN; break;
-                    case "BLUE": hintKeycode = KeyEvent.KEYCODE_PROG_BLUE; break;
-                    case "YELLOW": hint2Keycode = KeyEvent.KEYCODE_PROG_YELLOW; break;
-                    default:
-                        Log.e(TAG, "invalid hint2 keycode " + hint2_args[1]);
-                        break;
-                }
-                Log.d(TAG, "hint2:" + hint2String + " key:" + hint2Keycode);
-            } else {
-                Log.e(TAG, "invalid hint2 arg length " + hint2_args.length);
-            }
-        }
-        // #5-3
-        String hint3 = intent.getStringExtra("hint3");
-        String hint3String = null;
-        int hint3Keycode = -1;
-        if (type == TYPE_VIDEOCALL_CALLING) {
-            // no hint3
-        } else if (type == TYPE_VIDEOCALL_INCOMING) {
-            // no hint3
-        } else if (!TextUtils.isEmpty(hint3)) {
-            Log.d(TAG, " hint3:" + hint3);
-            String[] hint3_args = hint3.split("@");
-            hint3String = "hint3";
-            if (hint3_args.length >= 1 && hint3_args.length <= 2) {
-                hint3String = hint3_args[0];
-                switch (hint3_args[1]) {
-                    case "RED": hint3Keycode = KeyEvent.KEYCODE_PROG_RED; break;
-                    case "GREEN": hint3Keycode = KeyEvent.KEYCODE_PROG_GREEN; break;
-                    case "BLUE": hint3Keycode = KeyEvent.KEYCODE_PROG_BLUE; break;
-                    case "YELLOW": hint3Keycode = KeyEvent.KEYCODE_PROG_YELLOW; break;
-                    default:
-                        Log.e(TAG, "invalid hint3 keycode " + hint3_args[1]);
-                        break;
-                }
-                Log.d(TAG, "hint3:" + hint3String + " key:" + hint3Keycode);
-            } else {
-                Log.e(TAG, "invalid hint3 arg length " + hint3_args.length);
-            }
         }
         // #6
-        int position = intent.getIntExtra("position", DEFAULT_POSITION);
-        if (type == TYPE_VIDEOCALL_CALLING) {
-            Log.d(TAG, " setup position for making a call");
-            position = 3; // right top
-        } else if (type == TYPE_VIDEOCALL_INCOMING) {
-            Log.d(TAG, " setup position for incoming call");
-            position = 3; // right top
-        }
-        Log.d(TAG, "position:" + position);
+        boolean openApp = intent.getBooleanExtra("openApp", false);
+        Log.d(TAG, " openApp:" + openApp);
         // #7
         int timeout = intent.getIntExtra("timeout", DEFAULT_TIMEOUT);
         Log.d(TAG, "timeout:" + timeout);
         addOverlayCustomizedView(createVSMFWOverlayView(
                 actionName, type,
-                titleString, titleBgcolor, titleFgcolor,
-                contentString, contentBgcolor, contentFgcolor, imgUrl,
+                titleString, contentString, imgUrl,
                 hintString, hintKeycode, hintReply,
-                hint2String, hint2Keycode, hint2Reply,
-                hint3String, hint3Keycode, hint3Reply,
-                position));
+                hint2String, hint2Keycode, hint2Reply));
         handler.postDelayed(runnerForRemovingMsg, timeout);
     }
 
     private View createVSMFWOverlayView(
-            String pkgName, final int type,
-            String title, int titleBgcolor, int titleFgcolor,
-            String content, int contentBgcolor, int contentFgcolor, String imgUrl,
-            String hint, final int hintKey, final String hintReply,
-            String hint2, final int hint2Key, final String hint2Reply,
-            String hint3, final int hint3Key, final String hint3Reply,
-            int position) {
+            String pkgName, final String type,
+            String title, String content, String imgUrl,
+            String hint, final int hintKey, final Bundle hintReply,
+            String hint2, final int hint2Key, final Bundle hint2Reply) {
         View view;
         view = layoutInflater.inflate(R.layout.vsm_floating_window, new RelativeLayout(this) {
-            final int windowtype = type;
+            final String windowtype = type;
             final int keycode = hintKey;
             final int keycode2 = hint2Key;
-            final int keycode3 = hint3Key;
-            final String reply = hintReply;
-            final String reply2 = hint2Reply;
-            final String reply3 = hint3Reply;
-            @Override
-            public boolean dispatchTouchEvent(MotionEvent ev) {
-                Log.v(TAG, "dispatchTouchEvent " + ev);
-                boolean ret = super.dispatchTouchEvent(ev);
-                Log.d(TAG, "dispatchTouchEvent ret=" + ret + " " + ev);
-                return ret;
-            }
+            final Bundle reply = hintReply;
+            final Bundle reply2 = hint2Reply;
             @Override
             public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
@@ -536,7 +420,7 @@ public class MainService extends Service implements View.OnTouchListener {
                         Log.v(TAG, "keycoede:" + keycode + " pressed");
                         if (null != hintReply) {
                             if (MainService.this.sendVideocallReplyBroadcast(
-                                    (TYPE_VIDEOCALL_CALLING == windowtype)?
+                                    TYPE_VIDEOCALL_CALLING.equals(windowtype)?
                                             EXTRA_VIDEOCALL_PICKUP:EXTRA_VIDEOCALL_CANCEL,
                                     hintReply)) {
                                 Toast.makeText(getApplicationContext(), "send reply", Toast.LENGTH_SHORT).show();
@@ -563,20 +447,6 @@ public class MainService extends Service implements View.OnTouchListener {
                         onRemoveMessage();
                         return true;
                     }
-                    if (event.getKeyCode() == keycode3) {
-                        Log.v(TAG, "keycode3:" + keycode3 + " pressed");
-                        if (null != hint3Reply) {
-                            if (MainService.this.sendVideocallReplyBroadcast(null, hint3Reply)) {
-                                Toast.makeText(getApplicationContext(), "send reply3", Toast.LENGTH_SHORT).show();
-                            } else {
-                                Toast.makeText(getApplicationContext(), "ERROR:cannot send reply3", Toast.LENGTH_SHORT).show();
-                            }
-                        } else {
-                            Log.v(TAG, "no reply found");
-                        }
-                        onRemoveMessage();
-                        return true;
-                    }
                 }
                 boolean ret = super.dispatchKeyEvent(event);
                 /* test code beg */
@@ -587,7 +457,7 @@ public class MainService extends Service implements View.OnTouchListener {
                 return ret;
             }
         });
-        boolean isEmergency = type == TYPE_EMERGENCY;
+        boolean isEmergency = type.equals(TYPE_WARNING);
         Log.d(TAG, "emergency:" + isEmergency);
         if (isEmergency) {
             if (Build.VERSION.SDK_INT >= 23) {
@@ -619,7 +489,6 @@ public class MainService extends Service implements View.OnTouchListener {
                 titleComp.setCompoundDrawables(null, null, null, null);
             }
             titleComp.setText(title);
-            //titleComp.setBackgroundColor(titleBgcolor);
             if (isEmergency) {
                 titleComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
             } else {
@@ -631,8 +500,6 @@ public class MainService extends Service implements View.OnTouchListener {
         TextView contentComp = view.findViewById(R.id.Content);
         Log.d(TAG, "setText(content):" + content);
         contentComp.setText(content);
-        //contentComp.setBackgroundColor(contentBgcolor);
-        contentComp.setTextColor(contentFgcolor);
         if (isEmergency) {
             contentComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
             contentComp.setTypeface(contentComp.getTypeface(), Typeface.BOLD);
@@ -652,6 +519,29 @@ public class MainService extends Service implements View.OnTouchListener {
 
         TextView hintComp = view.findViewById(R.id.Hint1);
         hintComp.setText(hint);
+        //hintComp.setClickable(true);
+        hintComp.setOnClickListener(new View.OnClickListener() {
+            final String windowtype = type;
+            final Bundle reply = hintReply;
+            final Bundle reply2 = hint2Reply;
+            @Override
+            public void onClick(View view) {
+                if (null != hintReply) {
+                    Log.d(TAG, "hint1 clicked");
+                    if (MainService.this.sendVideocallReplyBroadcast(
+                            TYPE_VIDEOCALL_CALLING.equals(windowtype)?
+                                    EXTRA_VIDEOCALL_PICKUP:EXTRA_VIDEOCALL_CANCEL,
+                            hintReply)) {
+                        Toast.makeText(getApplicationContext(), "send reply", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getApplicationContext(), "ERROR:cannot send reply", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Log.v(TAG, "no reply found");
+                }
+                onRemoveMessage();
+            }
+        });
         if (isEmergency) {
             hintComp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
             hintComp.setTypeface(hintComp.getTypeface(), Typeface.BOLD);
@@ -691,6 +581,25 @@ public class MainService extends Service implements View.OnTouchListener {
         } else {
             hint2Comp.setVisibility(View.VISIBLE);
             hint2Comp.setText(hint);
+            //hint2Comp.setClickable(true);
+            hint2Comp.setOnClickListener(new View.OnClickListener() {
+                final String windowtype = type;
+                final Bundle reply2 = hint2Reply;
+                @Override
+                public void onClick(View view) {
+                    if (null != hint2Reply) {
+                        Log.d(TAG, "hint2 clicked");
+                        if (MainService.this.sendVideocallReplyBroadcast(EXTRA_VIDEOCALL_HANGHUP, hint2Reply)) {
+                            Toast.makeText(getApplicationContext(), "send reply2", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getApplicationContext(), "ERROR:cannot send reply2", Toast.LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Log.v(TAG, "no reply found");
+                    }
+                    onRemoveMessage();
+                }
+            });
             if (isEmergency) {
                 hint2Comp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
                 hint2Comp.setTypeface(hint2Comp.getTypeface(), Typeface.BOLD);
@@ -725,90 +634,22 @@ public class MainService extends Service implements View.OnTouchListener {
             }
         }
 
-        TextView hint3Comp = view.findViewById(R.id.Hint3);
-        if (null == hint3) {
-            hint3Comp.setVisibility(View.GONE);
-        } else {
-            hint3Comp.setVisibility(View.VISIBLE);
-            hint3Comp.setText(hint);
-            if (isEmergency) {
-                hint3Comp.setTextColor(getResources().getColor(R.color.colorEmergencyText));
-                hint3Comp.setTypeface(hint3Comp.getTypeface(), Typeface.BOLD);
-            } else {
-                hint3Comp.setTextColor(getResources().getColor(R.color.colorNormalText));
-                hint3Comp.setTypeface(hint3Comp.getTypeface(), Typeface.NORMAL);
-            }
-            Drawable hint3Drawable = null;
-            switch (hint3Key) {
-                case KeyEvent.KEYCODE_PROG_RED:
-                    hint3Drawable = getResources().getDrawable(R.drawable.icon_r_30px);
-                    break;
-                case KeyEvent.KEYCODE_PROG_GREEN:
-                    hint3Drawable = getResources().getDrawable(R.drawable.icon_g_30px);
-                    break;
-                case KeyEvent.KEYCODE_PROG_BLUE:
-                    hint3Drawable = getResources().getDrawable(R.drawable.icon_b_36px);
-                    break;
-                case KeyEvent.KEYCODE_PROG_YELLOW:
-                    //hint3Drawable = getResources().getDrawable(R.drawable.icon_y_30px);
-                    break;
-                default:
-                    Log.d(TAG, "error hint3 key:" + hint2Key);
-                    break;
-            }
-            if (null != hint3Drawable) {
-                hint3Drawable.setBounds(0, 0, 30, 30);
-                hint3Comp.setCompoundDrawables(hint3Drawable, null, null, null);
-                hint3Comp.setCompoundDrawablePadding(7);
-            } else {
-                hint3Comp.setCompoundDrawables(null, null, null, null);
-            }
-        }
-
         LinearLayout window = view.findViewById(R.id.Window);
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams)window.getLayoutParams();
-        switch (position) {
-            case 0:
-                Log.d(TAG, "CENTER");
-                params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-                break;
-            case 1:
-                Log.d(TAG, "LEFTTOP");
-                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
-                params.addRule(RelativeLayout.ALIGN_PARENT_LEFT, RelativeLayout.TRUE);
-                params.addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-                break;
-            case 2:
-                Log.d(TAG, "LEFTBOTTOM");
-                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
-                params.addRule(RelativeLayout.ALIGN_PARENT_LEFT, RelativeLayout.TRUE);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
-                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-                break;
-            default:
-            case 3:
-                Log.d(TAG, "RIGHTTOP");
-                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
-                params.addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE);
-                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-                break;
-            case 4:
-                Log.d(TAG, "RIGHTBOTTOM");
-                params.removeRule(RelativeLayout.CENTER_IN_PARENT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
-                params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
-                params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
-                params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, RelativeLayout.TRUE);
-                break;
+        if (!isEmergency) {
+            Log.d(TAG, "RIGHTTOP");
+            params.removeRule(RelativeLayout.CENTER_IN_PARENT);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
+            params.addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE);
+            params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT, RelativeLayout.TRUE);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        } else {
+            Log.d(TAG, "CENTER");
+            params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_LEFT);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+            params.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         }
         window.setLayoutParams(params);
         return view;

@@ -5,7 +5,9 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
+import android.hardware.Camera;
 import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -27,6 +29,8 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
+
 public class MainService extends Service implements View.OnTouchListener {
     private static String TAG = MainService.class.getSimpleName();
 
@@ -35,6 +39,7 @@ public class MainService extends Service implements View.OnTouchListener {
     public static final String EXTRA_SHOW_MESSAGE_AND_MUSIC = "show-message-and-music";
     public static final String EXTRA_SHOW_MESSAGE_AND_MOVIE = "show-message-and-movie";
     public static final String EXTRA_PLAY_MOVIE_URL = "play-movie-url";
+    public static final String EXTRA_PLAY_MOVIE_AND_CAMERA_PREVIEW_URL = "play-movie-url-and-camera-preview";
     public static final String EXTRA_PLAY_MUSIC_URL = "play-music-url";
     public static final String EXTRA_VALUE_NULL_URL = "<null>";
     public static final String EXTRA_CLEAR_MESSAGE = "clear-message";
@@ -44,11 +49,15 @@ public class MainService extends Service implements View.OnTouchListener {
     private LayoutInflater layoutInflater;
     private View floatyView;
     private String displayTxt = "DEFAULT TEXT";
+    private boolean enableCameraPreview = false;
     private int windowType;
     private WindowManager.LayoutParams wmLayoutParam;
     private MainPlayer player;
     private SurfaceHolder holderForVideoPlayback = null;
     private SurfaceHolder surfaceHolder;
+    private SurfaceHolder holderForCamera = null;
+    private SurfaceHolder camHolder;
+    private Camera camera;
 
     private SurfaceHolder.Callback holderCallback = new SurfaceHolder.Callback() {
         @Override
@@ -64,6 +73,57 @@ public class MainService extends Service implements View.OnTouchListener {
         public void surfaceDestroyed(SurfaceHolder holder) {
             Log.d(TAG, "surfaceDestroyed");
             holderForVideoPlayback = null;
+        }
+    };
+
+    private SurfaceHolder.Callback camHolderCallback = new SurfaceHolder.Callback() {
+        @Override
+        public void surfaceCreated(SurfaceHolder holder) {
+            Log.d(TAG, "camView Created");
+            holderForCamera = holder;
+            try {
+                camera.setPreviewDisplay(holderForCamera);
+                camera.startPreview();
+            } catch (IOException e) {
+                Log.d(TAG, "Error setting camera preview: " + e.getMessage());
+            }
+        }
+        @Override
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            Log.d(TAG, "camView Changed");
+            if (holder.getSurface() == null){
+                // preview surface does not exist
+                return;
+            }
+
+            // stop preview before making changes
+            try {
+                camera.stopPreview();
+            } catch (Exception e){
+                // ignore: tried to stop a non-existent preview
+            }
+
+            // set preview size and make any resize, rotate or
+            // reformatting changes here
+            holderForCamera = holder;
+
+            // start preview with new settings
+            try {
+                camera.setPreviewDisplay(holderForCamera);
+                camera.startPreview();
+            } catch (Exception e){
+                Log.d(TAG, "Error starting camera preview: " + e.getMessage());
+            }
+
+        }
+        @Override
+        public void surfaceDestroyed(SurfaceHolder holder) {
+            Log.d(TAG, "camView Destroyed");
+            try {
+                camera.stopPreview();
+            } finally {
+                holderForCamera = null;
+            }
         }
     };
 
@@ -133,6 +193,11 @@ public class MainService extends Service implements View.OnTouchListener {
         startForeground(1, notification);
     }
 
+    public void enableCameraPreview(boolean enable) {
+        Log.v(TAG, "[ECP]" + enable);
+        this.enableCameraPreview = enable;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -194,6 +259,8 @@ public class MainService extends Service implements View.OnTouchListener {
                 onShowMessage(intent);
             } else if (intent.hasExtra(EXTRA_PLAY_MOVIE_URL)) {
                 onPlayUrl(intent);
+            } else if (intent.hasExtra(EXTRA_PLAY_MOVIE_AND_CAMERA_PREVIEW_URL)) {
+                onPlayUrl(intent);
             } else if (intent.hasExtra(EXTRA_PLAY_MUSIC_URL)) {
                 onPlayUrl(intent);
             } else if (intent.hasExtra(EXTRA_CLEAR_MESSAGE)) {
@@ -238,8 +305,56 @@ public class MainService extends Service implements View.OnTouchListener {
             }
             addOverlayView();
             return true;
+        } else if (intent.hasExtra(EXTRA_PLAY_MOVIE_AND_CAMERA_PREVIEW_URL)) {
+            msg = intent.getStringExtra(EXTRA_PLAY_MOVIE_AND_CAMERA_PREVIEW_URL);
+            if (!TextUtils.isEmpty(msg) && !EXTRA_VALUE_NULL_URL.equals(msg)) {
+                Log.d(TAG, "Play video url=" + msg);
+                displayTxt = msg;
+                player.playURL(msg, MainPlayer.TYPE_VIDEO);
+            } else {
+                // mp4 from AOSP
+                // https://android.googlesource.com/platform/frameworks/base/+/android-cts-7.1_r23/media/tests/contents/media_api/videoeditor/
+                displayTxt = "H264_BP_1920x1080_30fps_1200Kbps_1_10.mp4";
+                player.playAsset("H264_BP_1920x1080_30fps_1200Kbps_1_10.mp4", MainPlayer.TYPE_VIDEO);
+            }
+            try {
+                if (!checkSystemFeature())  {
+                    Toast.makeText(getApplicationContext(), "no camera feature, cannot use camera", Toast.LENGTH_LONG).show();
+                } else {
+                    camera = getDefaultCamera();
+                    if (camera == null) {
+                        Toast.makeText(getApplicationContext(), "Cannot get camera", Toast.LENGTH_LONG).show();
+                    } else {
+                        enableCameraPreview(true);
+                    }
+                }
+            } catch (Exception e) {
+                Toast.makeText(getApplicationContext(), "Cannot get camera", Toast.LENGTH_LONG).show();
+            }
+            addOverlayView();
+            return true;
         }
         return false;
+    }
+
+    private boolean checkSystemFeature() {
+        boolean ret = getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA);
+        Log.v(TAG, "camera feature:" + ret);
+        return ret;
+    }
+
+    private static Camera getDefaultCamera() {
+        // Find the total number of cameras available
+        int  numCamera = Camera.getNumberOfCameras();
+        Log.v(TAG, "numCamera:" + numCamera);
+        // Find the ID of the back-facing ("default") camera
+        Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
+        for (int i = 0; i < numCamera; i++) {
+            Camera.getCameraInfo(i, cameraInfo);
+            Log.v(TAG, "cameraInfo:" + cameraInfo);
+            return Camera.open(i);
+        }
+        return null;
     }
 
     private void onShowMessage(Intent intent) {
@@ -375,6 +490,16 @@ public class MainService extends Service implements View.OnTouchListener {
                 onRemoveMessage();
             }
         });
+        SurfaceView camView = view.findViewById(R.id.CameraOnFloaty);
+        if (enableCameraPreview) {
+            Log.v(TAG, "Enable Camera Preview");
+            camView.setVisibility(View.VISIBLE);
+            camHolder = camView.getHolder();
+            camHolder.addCallback(camHolderCallback);
+            enableCameraPreview = false; // one time
+        } else {
+            camView.setVisibility(View.GONE);
+        }
         return view;
     }
 

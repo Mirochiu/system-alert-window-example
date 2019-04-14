@@ -28,6 +28,12 @@
         android:layout_gravity="bottom|right"
         android:background="@color/colorPrimaryDark" />
 
+    <SurfaceView
+        android:id="@+id/CameraOnFloaty"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_gravity="right|top" />
+
     <Button
         android:id="@+id/ButtonOnFloaty"
         android:layout_width="wrap_content"
